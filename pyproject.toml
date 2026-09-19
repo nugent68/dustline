@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dustline"
+version = "0.1.0.dev0"
+description = "Measured extinction law (R_V) and 3D dust run A_X(D) along any sightline from Gaia XP spectra x PHOENIX NewEra models plus survey photometry"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [
+    { name = "P. Nugent" },
+]
+keywords = ["astronomy", "extinction", "dust", "gaia", "interstellar-medium"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "astropy>=5.3",
+    "dust_extinction>=1.2",
+    "requests>=2.28",
+    "tqdm>=4.65",
+    "gaiaxpy>=2.1",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.7"]
+test = ["pytest>=7.0", "pytest-cov"]
+dev = ["dustline[plot,test]", "ruff"]
+
+[project.scripts]
+dustline = "dustline.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/nugent68/dustline"
+Issues = "https://github.com/nugent68/dustline/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dustline"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "network: tests that hit remote archives (deselect with '-m \"not network\"')",
+    "slow: long-running end-to-end tests",
+]

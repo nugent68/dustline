@@ -1,0 +1,279 @@
+"""Per-star fits of Gaia XP spectra + broadband photometry with PHOENIX NewEra
+models x a G23(R_V) extinction curve, the flux scale (R/D)^2 profiled and tied
+to the Gaia parallax through a MIST radius prior.
+
+Model:  F_obs(lam) = C * F_NewEra(Teff, logg, [M/H]=0) * 10^(-0.4 A_V ext(lam; R_V)),
+        C = (R/D)^2 profiled analytically per grid point; the radius prior
+        (log R_impl - log R_MIST(Teff, logg))^2 / sigma^2, R_impl = D sqrt(C),
+        D = 1/parallax, breaks the Teff-A_V degeneracy of A/F stars at R ~ 50.
+Grid:   NewEra ([M/H] 0, Teff >= 3200 K, all log g) x A_V 0-8 (0.1) x
+        R_V 2.3-5.55 (0.25, the G23 range).
+
+Hard-won pipeline rules baked in (see the dustline method notes):
+- never fit XP alone (T_eff biased cool, R_V ~ 4.4): photometry is required;
+- [M/H] fixed at 0 (free [M/H] absorbs XP/NewEra residual systematics);
+- Lindegren+2021 parallax zero point -0.017 mas;
+- photometric zero-point offsets iterated, but NIR offsets FROZEN after the
+  first pass (iterating them drifts a common JHK shift, R_V +0.04/pass).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import time
+
+import numpy as np
+import pandas as pd
+
+from . import extinction, filters, models
+from .cache import Workspace
+
+AV_GRID = np.arange(0.0, 8.01, 0.1)
+RV_GRID = np.arange(2.3, 5.56, 0.25)
+XP_FLOOR = 0.02            # fractional flux systematic per XP sample
+XP_PEAK_FLOOR = 0.005      # fraction of the spectrum peak
+XP_EDGE = (340.0, 1015.0)  # nm; outside is calibration edge, masked
+XP_SCALE = 3.0             # chi2_XP divisor (343 samples ~ 110 resolution elements)
+PLX_ZP = -0.017            # Lindegren+2021 global zero point (mas)
+MIN_PLX_SNR_PRIOR = 3.0    # below this the radius prior is off
+PHOT_SYS_DEFAULT = 0.03    # per-band systematic added in quadrature
+NIR_PREFIXES = ("2MASS", "VISTA")
+
+
+def _phot_sys(band: str) -> float:
+    return 0.04 if band.endswith("_Y") or band.endswith("_y") else PHOT_SYS_DEFAULT
+
+
+def build_grid(ws: Workspace, bands: list[str], law: str = "g23") -> dict:
+    """Model products on the fit sub-grid: XP-resolution spectra, band f_nu,
+    per-(R_V, A_V) band extinctions, the radius prior.  Cached in the shared
+    asset cache keyed by the band list + law (reused across sightlines)."""
+    from . import assets
+
+    key = hashlib.sha256(("|".join(bands) + law).encode()).hexdigest()[:10]
+    path = assets.cache_dir() / f"xp_grid_{law}_{key}.npz"
+    if path.exists():
+        d = np.load(path, allow_pickle=False)
+        out = {k: d[k] for k in d.files}
+        out["bands"] = [str(b) for b in out["bands"]]
+        return out
+    t0 = time.time()
+    wave, flux, meta = models.load_cache()
+    sel = models.sub_grid(meta, teff=(3200, 12000), logg=(0.0, 6.0), mh=(0.0,))
+    meta, flux = meta[sel], flux[sel]
+    xp_wave = np.arange(336.0, 1021.0, 2.0)
+    K = models.xp_lsf_matrix(wave, xp_wave)
+    m_xp = (flux @ K.T) * models.RD2                       # W m-2 nm-1 at C=(R/D)^2=1
+    ext_xp = np.stack([extinction.curve(xp_wave * 10.0, rv, law) for rv in RV_GRID])
+    ph = models.Photometry(wave, bands)
+    ext_full = np.stack([extinction.curve(wave, rv, law) for rv in RV_GRID])
+    fl = flux * 100.0 * models.RD2                         # erg/s/cm2/A at C=1
+    fnu0 = np.stack([ph.fnu(fl)[b] for b in bands], axis=1)
+    A_band = np.zeros((len(RV_GRID), len(AV_GRID), len(meta), len(bands)), np.float32)
+    for r, rv in enumerate(RV_GRID):
+        for a, av in enumerate(AV_GRID):
+            if av == 0:
+                continue
+            fe = ph.fnu(fl * (10.0 ** (-0.4 * av * ext_full[r]))[None, :])
+            A_band[r, a] = np.stack(
+                [-2.5 * np.log10(fe[b] / fnu0[:, k]) for k, b in enumerate(bands)], axis=1)
+        print(f"  grid: band extinction R_V {rv:.2f} ({time.time() - t0:.0f} s)", flush=True)
+    rprior = models.radius_prior(meta)
+    out = dict(meta=meta, xp_wave=xp_wave, m_xp=m_xp.astype(np.float32),
+               ext_xp=ext_xp.astype(np.float32), fnu0=fnu0.astype(np.float64),
+               A_band=A_band, rprior=rprior, av=AV_GRID, rv=RV_GRID,
+               bands=np.array(bands))
+    np.savez_compressed(path, **out)
+    out["bands"] = bands
+    print(f"grid: {len(meta)} models x {len(AV_GRID)} A_V x {len(RV_GRID)} R_V "
+          f"-> {path} ({time.time() - t0:.0f} s)", flush=True)
+    return out
+
+
+def _fit_batch(grid, flux, err, plx, plx_err, phot_f, phot_w):
+    """chi2 over (R_V, A_V, model) for a batch: (chi2_data, chi2_prior, C)."""
+    w = 1.0 / err ** 2
+    wd = (w * flux).astype(np.float32).T
+    wT = w.astype(np.float32).T
+    sdd = (w * flux ** 2).sum(axis=1) / XP_SCALE
+    sdd = sdd + (phot_w * phot_f ** 2).sum(axis=1)
+    NR, NA, NM = len(grid["rv"]), len(grid["av"]), len(grid["meta"])
+    Ns = flux.shape[0]
+    A = np.empty((NR, NA, NM, Ns), np.float64)
+    B = np.empty_like(A)
+    for r in range(NR):
+        for a in range(NA):
+            m = grid["m_xp"] * (10.0 ** (-0.4 * grid["av"][a] * grid["ext_xp"][r]))[None, :]
+            A[r, a] = (m @ wd) / XP_SCALE
+            B[r, a] = ((m * m) @ wT) / XP_SCALE
+            fnu = grid["fnu0"] * 10.0 ** (-0.4 * grid["A_band"][r, a].astype(np.float64))
+            A[r, a] += fnu @ (phot_w * phot_f).T
+            B[r, a] += (fnu * fnu) @ phot_w.T
+    C = A / B
+    chi2 = sdd[None, None, None, :] - A * A / B
+    D = 1.0 / plx
+    sig_d = 0.4343 * plx_err / plx
+    logR = 0.5 * np.log10(np.maximum(C, 1e-30)) + np.log10(D)[None, None, None, :]
+    mu = grid["rprior"][:, 0][None, None, :, None]
+    sig = np.sqrt(grid["rprior"][:, 1][None, None, :, None] ** 2 + sig_d[None, None, None, :] ** 2)
+    chi2_prior = ((logR - mu) / sig) ** 2
+    return chi2, chi2_prior, C
+
+
+def _summarize(grid, chi2, chi2_prior, C, bands):
+    """Per-star best-fit + posterior summaries from the chi2 cubes."""
+    tot = chi2 + chi2_prior
+    meta = grid["meta"]
+    teff, logg = meta[:, 0], meta[:, 1]
+    rows = []
+    for s in range(tot.shape[-1]):
+        t = tot[..., s]
+        k = np.unravel_index(np.argmin(t), t.shape)
+        L = np.exp(-0.5 * (t - t[k]))
+        L /= L.sum()
+        pr = L.sum(axis=(0, 1))
+        pav = L.sum(axis=(0, 2))
+        prv = L.sum(axis=(1, 2))
+
+        def mstd(x, p):
+            m = (x * p).sum()
+            return m, np.sqrt(max((x * x * p).sum() - m * m, 0.0))
+
+        tm, ts = mstd(teff, pr)
+        gm, gs = mstd(logg, pr)
+        am, as_ = mstd(grid["av"], pav)
+        rm, rs = mstd(grid["rv"], prv)
+        Ab = np.einsum("ram,ramb->b", L, grid["A_band"])
+        Ab2 = np.einsum("ram,ramb->b", L, grid["A_band"] ** 2)
+        Abs = np.sqrt(np.maximum(Ab2 - Ab ** 2, 0.0))
+        row = dict(teff_best=teff[k[2]], logg_best=logg[k[2]], imodel=k[2],
+                   av_best=grid["av"][k[1]], rv_best=grid["rv"][k[0]],
+                   chi2_best=chi2[k[0], k[1], k[2], s],
+                   chi2_prior_best=chi2_prior[k[0], k[1], k[2], s],
+                   C_best=C[k[0], k[1], k[2], s],
+                   teff=tm, teff_err=ts, logg=gm, logg_err=gs,
+                   av=am, av_err=as_, rv=rm, rv_err=rs)
+        for j, b in enumerate(bands):
+            row[f"A_{b}"] = Ab[j]
+            row[f"A_{b}_err"] = Abs[j]
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
+              offsets: dict[str, float] | None = None, law: str = "g23",
+              batch: int = 64, max_stars: int = 0) -> pd.DataFrame:
+    """Fit every XP star; returns the per-star results table."""
+    grid = build_grid(ws, bands, law)
+    offsets = {} if offsets is None else dict(offsets)
+    offsets = {b: offsets.get(b, 0.0) for b in bands}
+    zp = np.array([filters.get(b).zp_jy for b in bands]) * 1e-23
+    ids = xp["source_id"]
+    g = stars.set_index("source_id").loc[ids].reset_index()
+    flux_all = xp["flux"].astype(np.float64)
+    err_all = xp["flux_err"].astype(np.float64)
+    wave = xp["wave_nm"]
+    n = len(g) if not max_stars else min(max_stars, len(g))
+    print(f"fitting {n} stars, {len(grid['meta'])} models, bands {bands}", flush=True)
+    out = []
+    t0 = time.time()
+    for k0 in range(0, n, batch):
+        sl = slice(k0, min(k0 + batch, n))
+        flux, err = flux_all[sl].copy(), err_all[sl].copy()
+        peak = np.nanmax(np.abs(flux), axis=1, keepdims=True)
+        err = np.sqrt(err ** 2 + (XP_FLOOR * np.abs(flux)) ** 2 + (XP_PEAK_FLOOR * peak) ** 2)
+        bad = (~np.isfinite(flux) | ~np.isfinite(err)
+               | (wave < XP_EDGE[0])[None, :] | (wave > XP_EDGE[1])[None, :])
+        flux[bad] = 0.0
+        err[bad] = np.inf
+        gs = g.iloc[sl]
+        plx = gs.parallax.values - PLX_ZP
+        plx_err = gs.parallax_error.values
+        good = np.isfinite(plx) & (plx / plx_err > MIN_PLX_SNR_PRIOR)
+        plx_fit = np.where(good, plx, 1.0)
+        plxe_fit = np.where(good, plx_err, 1.0)
+        mags = np.stack([gs[f"mag_{b}"].values - offsets[b] for b in bands], axis=1)
+        merr = np.stack([np.sqrt(gs[f"magerr_{b}"].values ** 2 + _phot_sys(b) ** 2)
+                         for b in bands], axis=1)
+        ok = np.isfinite(mags) & np.isfinite(merr) & (merr < 0.5)
+        phot_f = np.where(ok, zp * 10.0 ** (-0.4 * np.nan_to_num(mags)), 0.0)
+        phot_w = np.where(ok, 1.0 / (0.9210 * merr * phot_f) ** 2, 0.0)
+        phot_w[~ok] = 0.0
+        chi2, chi2_prior, C = _fit_batch(grid, flux, err, plx_fit, plxe_fit, phot_f, phot_w)
+        chi2_prior[..., ~good] = 0.0
+        df = _summarize(grid, chi2, chi2_prior, C, bands)
+        df.insert(0, "source_id", gs.source_id.values)
+        df["n_xp"] = np.isfinite(err).sum(axis=1)
+        df["plx_used"] = good
+        df["n_phot"] = (phot_w > 0).sum(axis=1)
+        # observed - synthetic magnitude at the best fit, for the zero-point iteration
+        for j, b in enumerate(bands):
+            im = df.imodel.values
+            ia = np.rint(df.av_best.values / 0.1).astype(int)
+            ir = np.rint((df.rv_best.values - RV_GRID[0]) / 0.25).astype(int)
+            syn = -2.5 * np.log10(grid["fnu0"][im, j]
+                                  * 10 ** (-0.4 * grid["A_band"][ir, ia, im, j])
+                                  * df.C_best.values / zp[j])
+            df[f"dm_{b}"] = mags[:, j] - syn
+        out.append(df)
+        print(f"  {sl.stop}/{n} ({time.time() - t0:.0f} s)", flush=True)
+    res = pd.concat(out, ignore_index=True)
+    keep = ["source_id", "ra", "dec", "parallax", "parallax_error", "parallax_over_error",
+            "ruwe", "ipd_frac_multi_peak", "phot_g_mean_mag", "bp_rp"]
+    res = g[keep].iloc[:n].merge(res, on="source_id")
+    res["D_kpc"] = 1.0 / (res.parallax - PLX_ZP)
+    res["D_err"] = res.parallax_error / (res.parallax - PLX_ZP) ** 2
+    return res
+
+
+def measure_offsets(stars_fit: pd.DataFrame, bands: list[str], prev: dict[str, float],
+                    min_bands: int, freeze_nir: bool) -> tuple[dict[str, float], float]:
+    """Cumulative per-band zero-point offsets (observed - synthetic at the fit) from
+    well-fit stars; returns (offsets, largest optical move).  NIR bands are frozen
+    after the first pass (freeze_nir=True) - iterating them drifts R_V."""
+    r = stars_fit
+    ok = ((r.chi2_best * 3 / r.n_xp < 2.5) & (r.ruwe < 1.4)
+          & (r.ipd_frac_multi_peak <= 10) & (r.n_phot >= min_bands))
+    r = r[ok]
+    off = dict(prev)
+    max_move = 0.0
+    for b in bands:
+        d = r[f"dm_{b}"].dropna()
+        if len(d) < 20:
+            off.setdefault(b, 0.0)
+            continue
+        med = float(d.median())
+        is_nir = any(b.startswith(p) for p in NIR_PREFIXES)
+        if is_nir and freeze_nir and b in prev:
+            continue    # NIR offsets frozen at their first-pass values
+        off[b] = round(prev.get(b, 0.0) + med, 4)
+        if not is_nir:
+            max_move = max(max_move, abs(med))
+    return off, max_move
+
+
+def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
+                         law: str = "g23", min_bands_offsets: int = 4,
+                         max_passes: int = 3, converge: float = 0.02,
+                         force: bool = False) -> pd.DataFrame:
+    """The fit + zero-point iteration: fit, measure offsets, refit until the
+    optical offsets move < converge mag (NIR frozen after pass 1). Cached."""
+    out_path = ws.path("xp_stars.csv")
+    off_path = ws.path("phot_offsets.json")
+    if out_path.exists() and not force:
+        return pd.read_csv(out_path)
+    offsets: dict[str, float] = {}
+    fit = None
+    for p in range(max_passes):
+        print(f"--- fit pass {p + 1} (offsets: { {k: v for k, v in offsets.items()} })", flush=True)
+        fit = fit_stars(ws, stars, xp, bands, offsets=offsets, law=law)
+        offsets, moved = measure_offsets(fit, bands, offsets, min_bands_offsets,
+                                         freeze_nir=(p >= 1))
+        json.dump(offsets, open(off_path, "w"), indent=1)
+        print(f"    offsets now {offsets} (largest optical move {moved:.3f})", flush=True)
+        if p >= 1 and moved < converge:
+            break
+    fit.round(5).to_csv(out_path, index=False)
+    print(f"wrote {out_path}: {len(fit)} stars", flush=True)
+    return fit
