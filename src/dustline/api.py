@@ -140,17 +140,30 @@ class Sightline:
                              priors where the footprint has them (high latitude)
     freeze_offsets : bool    hold the photometric zero points at 0 instead of
                              iterating them (the A/B control in column mode)
+    uv, mir : bool           GALEX FUV/NUV and AllWISE W1/W2 where the footprint has
+                             them - only taken when the model cache covers the bands
+                             (the newera_uvir_cache asset; $DUSTLINE_MODEL_CACHE)
     """
 
     def __init__(self, ra: float, dec: float, radius_arcmin: float = DEFAULT_RADIUS_ARCMIN,
                  photometry: UserPhotometry | None = None, prefer_deep: bool = True,
-                 spectro_priors: bool = True, freeze_offsets: bool = False):
+                 spectro_priors: bool = True, freeze_offsets: bool = False,
+                 uv: bool = True, mir: bool = True):
+        from . import models
+
         self.ra, self.dec = float(ra), float(dec)
         self.radius_arcmin = float(radius_arcmin)
         self.photometry = photometry
         self.plan = footprint.plan(self.ra, self.dec, prefer_deep=prefer_deep)
         if not spectro_priors:
             self.plan.spectro = "none"
+        # UV / mid-IR only when asked for AND the model cache reaches the bands
+        if not uv or (self.plan.uv != "none" and not all(
+                models.cache_covers(b) for b in ("GALEX_FUV", "GALEX_NUV"))):
+            self.plan.uv = "none"
+        if not mir or (self.plan.mir != "none" and not all(
+                models.cache_covers(b) for b in ("WISE_W1", "WISE_W2"))):
+            self.plan.mir = "none"
         self.freeze_offsets = bool(freeze_offsets)
         config = dict(optical=self.plan.optical, nir=self.plan.nir,
                       user_phot=str(photometry.path) if photometry else None)
@@ -161,6 +174,12 @@ class Sightline:
             config["mode"] = self.plan.mode
         if self.freeze_offsets:
             config["freeze_offsets"] = True
+        if self.plan.uv != "none":
+            config["uv"] = self.plan.uv
+        if self.plan.mir != "none":
+            config["mir"] = self.plan.mir
+        if models.cache_name() != "newera_full_cache.npz":
+            config["model_cache"] = models.cache_tag()
         self.ws = Workspace(self.ra, self.dec, self.radius_arcmin, config)
 
     def run(self, force: bool = False, chunk: int = 200) -> ExtinctionResult:
@@ -182,7 +201,10 @@ class Sightline:
             print(f"  - {note}")
 
         # 1. Gaia cone + XP spectra (fetch skipped when calibrated spectra exist,
-        #    e.g. a seeded or completed workspace)
+        #    e.g. a seeded or completed workspace; a sibling workspace of the same
+        #    position with other options seeds them)
+        if not force and not self.ws.has("xp_sampled.npz"):
+            self.ws.seed_from_sibling()
         g = gaia.cone(self.ws, force=force)
         if not self.ws.has("xp_sampled.npz") or force:
             gaia.fetch_xp(self.ws, g, chunk=chunk)
@@ -217,7 +239,13 @@ class Sightline:
         law["n_fitted"] = int(len(fit))
         law["n_spec_prior"] = int(fit["spec_prior"].sum()) if "spec_prior" in fit else 0
         law["survey_plan"] = dict(optical=self.plan.optical, nir=self.plan.nir,
-                                  spectro=self.plan.spectro, mode=self.plan.mode)
+                                  spectro=self.plan.spectro, mode=self.plan.mode,
+                                  uv=self.plan.uv, mir=self.plan.mir)
+        from . import models
+        law["model_cache"] = models.cache_name()
+        sfd = self.ws.path("galex_sfd.json")
+        if sfd.exists():
+            law["sfd_ebv"] = json.loads(sfd.read_text())["sfd_ebv"]
         off_path = self.ws.path("phot_offsets.json")
         law["phot_offsets"] = json.loads(off_path.read_text()) if off_path.exists() else {}
         law["offsets_frozen"] = self.freeze_offsets

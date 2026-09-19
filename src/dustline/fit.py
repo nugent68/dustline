@@ -42,15 +42,19 @@ XP_SCALE = 3.0             # chi2_XP divisor (343 samples ~ 110 resolution eleme
 PLX_ZP = -0.017            # Lindegren+2021 global zero point (mas)
 MIN_PLX_SNR_PRIOR = 3.0    # below this the radius prior is off
 PHOT_SYS_DEFAULT = 0.03    # per-band systematic added in quadrature
-NIR_PREFIXES = ("2MASS", "VISTA")
+NIR_PREFIXES = ("2MASS", "VISTA", "WISE")   # zero points frozen after pass 1
+FROZEN_PREFIXES = ("GALEX",)                # zero points never iterated (degenerate with A_V)
+UV_SYS = 0.10              # model UV flux systematic (GALEX bands), added in quadrature
 MH_DEFAULT = (0.0,)
-MH_SPECTRO = (-0.5, 0.0, 0.5)      # the cache's [M/H] axis, opened with spectroscopic priors
+MH_SPECTRO = None          # with spectroscopic priors: every [M/H] the model cache holds
 SPEC_COLS = ("teff_spec", "teff_spec_err", "logg_spec", "logg_spec_err",
              "feh_spec", "feh_spec_err")
 BATCH_MODELS = 64 * 735            # stars x models per batch (memory: ~2.5 GB of cubes)
 
 
 def _phot_sys(band: str) -> float:
+    if band.startswith(FROZEN_PREFIXES):
+        return UV_SYS
     return 0.04 if band.endswith("_Y") or band.endswith("_y") else PHOT_SYS_DEFAULT
 
 
@@ -62,9 +66,13 @@ def build_grid(ws: Workspace, bands: list[str], law: str = "g23",
     the solar default), reused across sightlines."""
     from . import assets
 
+    wave, flux, meta = models.load_cache()
+    if mh is None:
+        mh = tuple(sorted(set(meta[:, 2].tolist())))
     mh = tuple(float(m) for m in mh)
     tag = "" if mh == MH_DEFAULT else "mh" + ",".join(f"{m:+.1f}" for m in mh)
-    key = hashlib.sha256(("|".join(bands) + law + tag).encode()).hexdigest()[:10]
+    ctag = "" if models.cache_name() == "newera_full_cache.npz" else models.cache_tag()
+    key = hashlib.sha256(("|".join(bands) + law + tag + ctag).encode()).hexdigest()[:10]
     path = assets.cache_dir() / f"xp_grid_{law}_{key}.npz"
     if path.exists():
         d = np.load(path, allow_pickle=False)
@@ -72,7 +80,6 @@ def build_grid(ws: Workspace, bands: list[str], law: str = "g23",
         out["bands"] = [str(b) for b in out["bands"]]
         return out
     t0 = time.time()
-    wave, flux, meta = models.load_cache()
     sel = models.sub_grid(meta, teff=(3200, 12000), logg=(0.0, 6.0), mh=mh)
     meta, flux = meta[sel], flux[sel]
     xp_wave = np.arange(336.0, 1021.0, 2.0)
@@ -92,7 +99,8 @@ def build_grid(ws: Workspace, bands: list[str], law: str = "g23",
             A_band[r, a] = np.stack(
                 [-2.5 * np.log10(fe[b] / fnu0[:, k]) for k, b in enumerate(bands)], axis=1)
         print(f"  grid: band extinction R_V {rv:.2f} ({time.time() - t0:.0f} s)", flush=True)
-    # the MIST radius prior at each model's own metallicity
+    # the MIST radius prior at each model's own metallicity (nearest MIST table:
+    # -0.5/0/+0.5, so the metal-poor models use the -0.5 isochrones)
     rprior = np.zeros((len(meta), 2))
     for m in np.unique(meta[:, 2]):
         k = meta[:, 2] == m
@@ -322,6 +330,9 @@ def measure_offsets(stars_fit: pd.DataFrame, bands: list[str], prev: dict[str, f
             off.setdefault(b, 0.0)
             continue
         med = float(d.median())
+        if b.startswith(FROZEN_PREFIXES):
+            off.setdefault(b, 0.0)       # UV zero points are never iterated
+            continue
         is_nir = any(b.startswith(p) for p in NIR_PREFIXES)
         if freeze_all:
             off.setdefault(b, 0.0)

@@ -55,6 +55,8 @@ BUILTIN: dict[str, tuple[str, str]] = {
     "Keck_Kp": ("Keck_Kp", "Vega"),
     # WISE
     "WISE_W1": ("WISE_W1", "Vega"), "WISE_W2": ("WISE_W2", "Vega"),
+    # GALEX (AB)
+    "GALEX_FUV": ("GALEX_FUV", "AB"), "GALEX_NUV": ("GALEX_NUV", "AB"),
 }
 
 _registry: dict[str, Band] = {}

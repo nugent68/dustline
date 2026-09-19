@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **UV and mid-IR photometry**: `catalogs/galex.py` (GUVcat_AIS FUV/NUV via VizieR TAP,
+  `catalogs/vizier.py`; colour-gated to hot stars, artefact flags, 0.05 mag floor) and
+  `catalogs/wise.py` (AllWISE W1/W2 via Data Lab; cc/ext flags, saturation cut).
+  `SurveyPlan.uv` / `.mir`, `Sightline(uv=, mir=)`, CLI `--no-uv` / `--no-mir`. GALEX
+  zero points are never iterated (`fit.FROZEN_PREFIXES`) and carry a 0.10 mag model
+  systematic; WISE joins the frozen-after-pass-1 NIR set. `foreground_column` splits the
+  clean sample by NUV availability. GALEX FUV/NUV filter curves added.
+- **UV-IR model cache** `newera_uvir_cache.npz` (`tools/build_newera_uvir_cache.py`):
+  4,366 NewEra models from the HSR files' LSR spectra, 900-25000 Å at 2 Å + 25000-60000 Å
+  at 20 Å, [M/H] −2..+0.5 — GALEX/WISE coverage and the metal-poor extension.
+  `models.DEFAULT_CACHE` / `$DUSTLINE_MODEL_CACHE` select the cache; `models.cache_covers`
+  guards every band (UV/MIR are skipped, with a message, when the cache does not reach
+  them); the grid cache key and the workspace config carry the cache identity. With
+  spectroscopic priors the [M/H] axis now spans whatever the cache holds.
+- `Workspace.seed_from_sibling`: a new option set at the same position reuses the Gaia
+  cone and XP spectra of an existing workspace instead of refetching.
+
+### Fixed
+- The packaged filter curves (`src/dustline/data/filters/*.dat`) were excluded from the
+  repository (and from wheels built from it) by the `data/` ignore pattern since v0.1.0;
+  the pattern is now root-only and the 26 curves are tracked.
+
 ## v0.3.0 — 2026-09-19
 
 ### Added

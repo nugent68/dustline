@@ -38,6 +38,8 @@ class SurveyPlan:
     notes: list[str]
     spectro: str = "none"   # "desi" | "none": per-star spectroscopic template priors
     mode: str = "law"       # "law" | "column"
+    uv: str = "none"        # "galex" | "none": GALEX GUVcat FUV/NUV (needs the UV-IR model cache)
+    mir: str = "wise"       # "wise" | "none": AllWISE W1/W2 (needs the UV-IR model cache)
 
 
 def galactic(ra: float, dec: float) -> tuple[float, float]:
@@ -92,5 +94,13 @@ def plan(ra: float, dec: float, prefer_deep: bool = True) -> SurveyPlan:
     mode = "column" if abs(lat) > 30.0 else "law"
     if mode == "column":
         notes.append("high latitude: foreground-column mode (R_V assumed 3.1)")
+
+    # --- UV (GALEX AIS avoids the plane) and mid-IR (AllWISE, confused in the bulge) ---
+    uv = "galex" if abs(lat) > 20.0 else "none"
+    mir = "wise" if abs(lat) > 10.0 else "none"
+    if uv == "galex":
+        notes.append("GALEX GUVcat_AIS FUV/NUV (hot stars; UV-IR model cache)")
+    if mir == "wise":
+        notes.append("AllWISE W1/W2 (UV-IR model cache)")
     return SurveyPlan(optical=optical, nir=nir, in_bulge_window=in_bulge, notes=notes,
-                      spectro=spectro, mode=mode)
+                      spectro=spectro, mode=mode, uv=uv, mir=mir)

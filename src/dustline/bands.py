@@ -15,7 +15,8 @@ import numpy as np
 import pandas as pd
 
 from .cache import Workspace
-from .catalogs import decals, decaps, desi, ps1, vvv
+from . import models
+from .catalogs import decals, decaps, desi, galex, ps1, vvv, wise
 from .catalogs.footprint import SurveyPlan
 
 TMASS_SYS = 0.03    # systematic added to 2MASS errors when used as a VVV fallback
@@ -57,6 +58,20 @@ def assemble(ws: Workspace, gaia: pd.DataFrame, plan: SurveyPlan,
                 df.loc[use2m, f"mag_VISTA_{b}"] = df.loc[use2m, f"mag_2MASS_{b}"]
                 df.loc[use2m, f"magerr_VISTA_{b}"] = np.sqrt(
                     df.loc[use2m, f"magerr_2MASS_{b}"] ** 2 + TMASS_SYS ** 2)
+
+    # --- UV / mid-IR: only when the model cache covers the bands ---
+    for slot, mod, names in (("uv", galex, ("GALEX_FUV", "GALEX_NUV")),
+                             ("mir", wise, ("WISE_W1", "WISE_W2"))):
+        if getattr(plan, slot, "none") == "none":
+            continue
+        if not all(models.cache_covers(b) for b in names):
+            print(f"{slot}: {names} not covered by model cache {models.cache_name()} - skipped "
+                  "(set DUSTLINE_MODEL_CACHE=newera_uvir_cache.npz)")
+            continue
+        x = mod.fetch(ws, gaia, force=force)
+        if len(x):
+            sep = f"{mod.__name__.rsplit('.', 1)[-1]}_sep"
+            df = df.merge(x.drop(columns=[sep] if sep in x else []), on="source_id", how="left")
 
     # --- spectroscopic template priors (DESI DR1 MWS), joined by Gaia source_id ---
     if plan.spectro == "desi":

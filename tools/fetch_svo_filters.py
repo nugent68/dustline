@@ -20,6 +20,8 @@ FILTERS = {
     "PS1_i": "PAN-STARRS/PS1.i",
     "Cousins_I": "Generic/Cousins.I",
     "Johnson_V": "Generic/Johnson.V",
+    "GALEX_FUV": "GALEX/GALEX.FUV",
+    "GALEX_NUV": "GALEX/GALEX.NUV",
 }
 
 FPS = "http://svo2.cab.inta-csic.es/theory/fps/fps.php?ID={}"

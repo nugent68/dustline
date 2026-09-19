@@ -38,5 +38,25 @@ class Workspace:
     def has(self, name: str) -> bool:
         return (self.dir / name).exists()
 
+    def seed_from_sibling(self, names=("gaia.csv", "xp_continuous_raw.csv", "xp_sampled.npz")) -> list[str]:
+        """Copy position-only products (the Gaia cone and the XP spectra, which do not
+        depend on the config) from another workspace of the same position and radius,
+        so a changed option set does not repeat the hours-long XP fetch."""
+        import shutil
+
+        prefix = self.dir.name.rsplit("_", 1)[0] + "_"
+        copied = []
+        for sib in sorted(self.dir.parent.glob(prefix + "*")):
+            if sib == self.dir:
+                continue
+            for n in names:
+                if not self.has(n) and (sib / n).exists():
+                    shutil.copy(sib / n, self.dir / n)
+                    copied.append(n)
+            if copied:
+                print(f"seeded {copied} from {sib.name}")
+                break
+        return copied
+
     def __repr__(self) -> str:  # pragma: no cover
         return f"Workspace({self.dir})"

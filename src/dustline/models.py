@@ -9,13 +9,24 @@ is RD2 = (R_sun/kpc)^2 = 5.086e-22.
 
 The cache and the MIST tables are release assets fetched on first use
 (dustline.assets); nothing here reads the network after that.
+
+Two caches exist: ``newera_full_cache.npz`` (2500-25000 A, [M/H] -0.5..+0.5,
+built from the NewEra LowRes grid) and ``newera_uvir_cache.npz`` (900-60000 A,
+[M/H] -2..+0.5, from the HSR files' LSR spectra; tools/build_newera_uvir_cache.py)
+which adds GALEX FUV/NUV and WISE W1/W2 coverage and the metal-poor models.
+DEFAULT_CACHE picks one; $DUSTLINE_MODEL_CACHE (asset name or a path) overrides.
 """
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import numpy as np
 
 from . import assets, filters
+
+DEFAULT_CACHE = "newera_full_cache.npz"
 
 RSUN_CM = 6.957e10
 KPC_CM = 3.0857e21
@@ -26,13 +37,38 @@ C_AA = 2.99792458e18                   # c in Angstrom/s
 _cache = {}
 
 
+def cache_name() -> str:
+    """The model cache in use: $DUSTLINE_MODEL_CACHE (asset name or file path) or DEFAULT_CACHE."""
+    return os.environ.get("DUSTLINE_MODEL_CACHE") or DEFAULT_CACHE
+
+
+def cache_tag() -> str:
+    """Short identifier of the model cache for grid-cache keys and workspace configs."""
+    return Path(cache_name()).stem.replace("newera_", "")
+
+
 def load_cache():
     """(wave_A, flux (Nmod, Nw) float32 W m^-2 nm^-1 surface, meta (Nmod, 3) [Teff, logg, MH])."""
-    if "newera" not in _cache:
-        d = np.load(assets.fetch("newera_full_cache.npz"))
+    name = cache_name()
+    if _cache.get("newera_name") != name:
+        path = Path(name) if (os.path.sep in name or Path(name).is_file()) else assets.fetch(name)
+        d = np.load(path)
         _cache["newera"] = (d["wave"].astype(float), d["flux"].astype(np.float32),
                             d["meta"].astype(float))
+        _cache["newera_name"] = name
     return _cache["newera"]
+
+
+def cache_covers(band: str, wave_A: np.ndarray | None = None, frac: float = 0.99) -> bool:
+    """True when the model wavelength grid holds >= frac of the band's lambda*T integral."""
+    if wave_A is None:
+        wave_A = load_cache()[0]
+    b = filters.get(band)
+    w = np.asarray(b.wave_A, float)
+    t = np.asarray(b.T, float) * w
+    inside = (w >= wave_A.min()) & (w <= wave_A.max())
+    tot = np.trapezoid(t, w)
+    return bool(tot > 0 and np.trapezoid(np.where(inside, t, 0.0), w) / tot >= frac)
 
 
 def sub_grid(meta, teff=(3500, 12000), logg=(0.0, 6.0), mh=(0.0,)):
@@ -52,6 +88,10 @@ class Photometry:
         self.T, self.zp, self.norm = {}, {}, {}
         for name in self.bands:
             band = filters.get(name)
+            if not cache_covers(name, self.wave):
+                raise ValueError(f"band {name!r} is not covered by the model wavelength grid "
+                                 f"({self.wave.min():.0f}-{self.wave.max():.0f} A); "
+                                 "use the newera_uvir_cache asset (DUSTLINE_MODEL_CACHE)")
             T = np.interp(self.wave, band.wave_A, band.T, left=0.0, right=0.0)
             self.T[name] = T * self.wave               # photon counting: weight lambda T
             self.zp[name] = band.zp_jy

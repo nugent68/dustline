@@ -19,8 +19,9 @@ venv/
 .idea/
 .DS_Store
 
-# Local data (model assets live in ~/.cache/dustline/, never in the repo)
-data/
+# Local data at the repo root (model assets live in ~/.cache/dustline/, never in the
+# repo); the packaged filter curves under src/dustline/data/ are NOT ignored
+/data/
 *.npz
 *.h5
 *.fits

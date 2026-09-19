@@ -26,7 +26,7 @@ def _cmd_run(a) -> int:
         phot = UserPhotometry(a.phot, bands)
     sl = Sightline(a.ra, a.dec, radius_arcmin=a.radius, photometry=phot,
                    prefer_deep=not a.simple_surveys, spectro_priors=not a.no_spectro,
-                   freeze_offsets=a.freeze_offsets)
+                   freeze_offsets=a.freeze_offsets, uv=not a.no_uv, mir=not a.no_mir)
     res = sl.run(force=a.force)
     tab = res.extinction(a.filter)
     rv = res.rv
@@ -36,9 +36,10 @@ def _cmd_run(a) -> int:
         print(f"\nforeground column A_V = {h['av']:.3f} +/- {h['av_err']:.3f} "
               f"(MAD {h['av_mad']:.3f}, N {h['n']} F/G stars with T_eff >= {c['teff_clean']:g} K "
               f"beyond {c['d_min_kpc']:g} kpc); R_V = {rv['rv']:g} assumed")
-        for k in ("clean_with_spec_prior", "teff_cool", "with_spec_prior", "without_spec_prior"):
-            v = c[k]
-            if v["n"]:
+        for k in ("clean_with_spec_prior", "clean_with_nuv", "clean_without_nuv", "teff_cool",
+                  "with_spec_prior", "without_spec_prior"):
+            v = c.get(k)
+            if v and v["n"]:
                 print(f"  {k:22s} A_V = {v['av']:.3f} +/- {v['av_err']:.3f} (N {v['n']})")
         for k, v in c["by_gmag"].items():
             if v["n"]:
@@ -96,6 +97,8 @@ def main(argv=None) -> int:
                    help="use PS1+2MASS even where DECaPS/VVV are available")
     r.add_argument("--no-spectro", action="store_true",
                    help="do not use DESI MWS stellar parameters as template priors")
+    r.add_argument("--no-uv", action="store_true", help="do not use GALEX FUV/NUV")
+    r.add_argument("--no-mir", action="store_true", help="do not use AllWISE W1/W2")
     r.add_argument("--freeze-offsets", action="store_true",
                    help="hold the photometric zero points at 0 (column-mode A/B control)")
     r.add_argument("--ref-av", type=float, default=None,

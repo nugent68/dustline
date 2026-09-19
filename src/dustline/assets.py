@@ -42,6 +42,13 @@ ASSETS: dict[str, dict] = {
         tag="v0.1.0",
         sha256="9ac0d3be95fda3373ad9aa3bcab54c2f4ee59159e2e85b2a42cec9aaac0f7062",
         size=13_773_902),
+    # 4,366 NewEra models from the HSR files' LSR spectra: [M/H] -2..+0.5, log g 0-6,
+    # Teff >= 3200, 900-25000 A at 2 A + 25000-60000 A at 20 A (GALEX + WISE coverage;
+    # tools/build_newera_uvir_cache.py).
+    "newera_uvir_cache.npz": dict(
+        tag="v0.4.0",
+        sha256=None,
+        size=None),
 }
 
 
@@ -110,7 +117,8 @@ def fetch(name: str, force: bool = False) -> Path:
             )
         return dest
     url = f"{RELEASE_BASE}/{info['tag']}/{name}"
-    print(f"dustline: downloading {name} (~{info['size'] / 1e6:.0f} MB) from {url}")
+    size = f"~{info['size'] / 1e6:.0f} MB" if info.get("size") else "size unknown"
+    print(f"dustline: downloading {name} ({size}) from {url}")
     _download(url, dest, info["size"])
     if info["sha256"]:
         got = _sha256(dest)

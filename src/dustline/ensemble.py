@@ -126,6 +126,10 @@ def foreground_column(fit: pd.DataFrame, d_min_kpc: float = D_BEHIND_KPC,
     hot = s.teff >= TEFF_CLEAN
     out["clean"] = stats(s[hot])
     out["clean_with_spec_prior"] = stats(s[hot & has_spec])
+    if "dm_GALEX_NUV" in s:
+        has_nuv = np.isfinite(s["dm_GALEX_NUV"])
+        out["clean_with_nuv"] = stats(s[hot & has_nuv])
+        out["clean_without_nuv"] = stats(s[hot & ~has_nuv])
     out["with_spec_prior"] = stats(s[has_spec])
     out["without_spec_prior"] = stats(s[~has_spec])
     out["teff_hot"] = out["clean"]
