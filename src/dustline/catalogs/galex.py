@@ -7,8 +7,8 @@ price is the models: the NewEra UV flux of cool and active stars is uncertain
 at the 0.1-0.3 mag level (chromospheres, missing line opacity), so the UV bands
 are only kept for the hotter stars (Gaia BP-RP colour cuts below, ~T_eff > 5300 K
 for NUV and > 6300 K for FUV) and carry a 0.10 mag systematic in the fit
-(fit._phot_sys); their zero points are never iterated (fit.FROZEN_PREFIXES) -
-a NUV offset is degenerate with a uniform A_V screen.
+(fit._phot_sys); their zero points are iterated per T_eff bin
+(fit.uv_offsets_by_teff), because the model UV bias is T_eff dependent.
 
 GUVcat also carries the SFD E(B-V) at each source ("E(B-V)" column): the
 median over the field is recorded as ``sfd_ebv`` in the cached table's

@@ -26,7 +26,7 @@ import numpy as np
 
 from . import assets, filters
 
-DEFAULT_CACHE = "newera_full_cache.npz"
+DEFAULT_CACHE = "newera_uvir_cache.npz"
 
 RSUN_CM = 6.957e10
 KPC_CM = 3.0857e21

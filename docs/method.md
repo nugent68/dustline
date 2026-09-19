@@ -78,17 +78,29 @@ of the field. What the COSMOS test (examples/cosmos, SFD A_V ≈ 0.05) showed:
   XP/NewEra residuals once T_eff is pinned. The zero-point offsets converged at
   |Δ| ≤ 0.016 mag, so the screen / zero-point degeneracy (`freeze_offsets`
   control) is not what sets it.
-- The NewEra cache only reaches [M/H] = −0.5, so metal-poor halo stars sit at
-  the grid edge (`mh_clamped`, 87 of 253 prior stars on COSMOS).
+- Since v0.4.0 the model cache (built from the NewEra HSR files' low-sampling
+  spectra) spans 900 Å–6 µm and [M/H] −2..+0.5: the metal-poor halo stars no
+  longer sit at a grid edge, GALEX FUV/NUV and WISE W1/W2 can enter the fit.
+  Stars without a spectroscopic prior are confined to [M/H] ±0.5 (free
+  metallicity absorbs residuals). Net effect on the COSMOS F/G column:
+  0.086 → 0.072 (SFD 0.059); the DESI-anchored F/G stars stay at 0.093.
+- GALEX: the NewEra NUV flux is too bright by +0.15/+0.18/+0.04 mag at
+  5000–5500/5500–6000/6000–6500 K (a per-T_eff zero point is iterated), and the
+  residual star-to-star scatter is 0.15–0.23 mag, i.e. σ(A_V) ≈ 0.065 per
+  star through A_NUV/A_V = 2.9 — no gain at A_V ≈ 0.06 (per-star ΔA_V
+  0.000 ± 0.006 with vs without NUV). WISE W1 agrees with 2MASS and the models
+  to a millimag and moves the column by 0.002.
 
 ## Validated against
 
-- OGLE-2024-BLG-0669 (l 13.2, b −1.6; PS1 + 2MASS, 9′): R_V = 2.88, MAD 0.53
-  (986 stars); red-clump column A_V = 3.28 ± 0.61 at D_RC = 6.1 kpc;
-  A_I = 0.42/0.89/1.09/1.21/1.32 at 1/2/3/4/5 kpc, bridged to 1.92 beyond
-  the clump. The packaged run is in examples/ob240669 and pinned by
+- OGLE-2024-BLG-0669 (l 13.2, b −1.6; PS1 + 2MASS, 9′): R_V = 2.84, MAD 0.48
+  (946 stars); red-clump column A_V = 3.33 ± 0.62 at D_RC = 6.1 kpc;
+  A_I = 0.41/0.84/1.00/1.17/1.31 at 1/2/3/4/5 kpc, bridged to 1.94 beyond
+  the clump (v0.4.0 cache; the 2500–25000 Å cache gave 2.88 ± 0.53). The packaged run is in examples/ob240669 and pinned by
   tests/test_regression_ob240669.py (runs when the sightline workspace is in
   the local cache).
+- COSMOS (l 237, b +42; column mode, 30′): F/G foreground column A_V = 0.072 ±
+  0.009 vs SFD 0.059 (examples/cosmos, tests/test_regression_cosmos.py).
 
 ## References
 

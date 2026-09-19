@@ -1,14 +1,15 @@
 # Changelog
 
-## Unreleased
+## v0.4.0 — 2026-09-19
 
 ### Added
 - **UV and mid-IR photometry**: `catalogs/galex.py` (GUVcat_AIS FUV/NUV via VizieR TAP,
   `catalogs/vizier.py`; colour-gated to hot stars, artefact flags, 0.05 mag floor) and
   `catalogs/wise.py` (AllWISE W1/W2 via Data Lab; cc/ext flags, saturation cut).
   `SurveyPlan.uv` / `.mir`, `Sightline(uv=, mir=)`, CLI `--no-uv` / `--no-mir`. GALEX
-  zero points are never iterated (`fit.FROZEN_PREFIXES`) and carry a 0.10 mag model
-  systematic; WISE joins the frozen-after-pass-1 NIR set. `foreground_column` splits the
+  zero points are iterated per T_eff bin (`fit.uv_offsets_by_teff`; the NewEra NUV flux
+  is ~0.35 mag too bright for G stars and the bias is T_eff dependent) and carry a
+  0.10 mag model systematic; WISE joins the frozen-after-pass-1 NIR set. `foreground_column` splits the
   clean sample by NUV availability. GALEX FUV/NUV filter curves added.
 - **UV-IR model cache** `newera_uvir_cache.npz` (`tools/build_newera_uvir_cache.py`):
   4,366 NewEra models from the HSR files' LSR spectra, 900-25000 Å at 2 Å + 25000-60000 Å
@@ -16,11 +17,28 @@
   `models.DEFAULT_CACHE` / `$DUSTLINE_MODEL_CACHE` select the cache; `models.cache_covers`
   guards every band (UV/MIR are skipped, with a message, when the cache does not reach
   them); the grid cache key and the workspace config carry the cache identity. With
-  spectroscopic priors the [M/H] axis now spans whatever the cache holds.
+  spectroscopic priors the [M/H] axis now spans whatever the cache holds; stars *without*
+  a prior are confined to [M/H] −0.5..+0.5 (`fit.MH_FREE_RANGE`) — free metallicity
+  absorbs residuals. **The UV-IR cache is the default model set** (`models.DEFAULT_CACHE`);
+  on the OB240669 bulge field it reproduces the old cache to ΔR_V = 0.04 and ΔA_V < 0.05
+  at every distance (per-star ΔA_V median −0.009, ΔT_eff −3 K).
+- GALEX zero points are iterated per T_eff bin from the previous pass's T_eff
+  (`fit.uv_offsets_by_teff`, recorded in `phot_offsets.json`); `UV_SYS = 0.15` mag from the
+  measured NUV residual scatter. On COSMOS the UV adds nothing at A_V ≈ 0.06 (per-star
+  ΔA_V 0.000 ± 0.006) — see the README for where it should help.
 - `Workspace.seed_from_sibling`: a new option set at the same position reuses the Gaia
-  cone and XP spectra of an existing workspace instead of refetching.
+  cone, XP spectra and per-survey catalog matches of an existing workspace instead of
+  refetching.
+- `examples/cosmos` regenerated on the v0.4.0 stack (clean F/G column 0.072 ± 0.009,
+  MAD 0.065; SFD 0.059); `examples/ob240669` regenerated on the new cache and the fixed
+  PS1 fetch.
 
 ### Fixed
+- **PS1 fetch**: the MAST catalogs API does not order rows between pages, so the paged
+  fetch dropped or duplicated objects at every page boundary (three identical queries:
+  page overlaps of 0, 180 and 6,936 rows; one refetch of the OB240669 field lost 16 % of
+  the matches). `catalogs/ps1.py` now tiles a full cone into seven sub-cones recursively
+  and deduplicates on `objID` — no paging.
 - The packaged filter curves (`src/dustline/data/filters/*.dat`) were excluded from the
   repository (and from wheels built from it) by the `data/` ignore pattern since v0.1.0;
   the pattern is now root-only and the 26 curves are tracked.

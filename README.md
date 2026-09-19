@@ -20,8 +20,9 @@ pip install git+https://github.com/nugent68/dustline
 pip install "dustline[plot] @ git+https://github.com/nugent68/dustline"   # + matplotlib for the figures
 ```
 
-Model assets (PHOENIX NewEra spectral cache ~91 MB, MIST v1.2 isochrones) are downloaded
-automatically from the GitHub release on first use and cached in `~/.cache/dustline/`.
+Model assets (the PHOENIX NewEra spectral cache, 214 MB: 4,366 models, 900 Å–6 µm,
+[M/H] −2..+0.5; MIST v1.2 isochrones) are downloaded automatically from the GitHub
+release on first use and cached in `~/.cache/dustline/`.
 
 ## Quickstart
 
@@ -108,12 +109,34 @@ degeneracy between a uniform A_V screen and the optical zero points.
 dustline run 150.12 2.21 --radius 30 --ref-av 0.05 --plots cosmos/   # COSMOS, 0.5 deg
 ```
 
+**GALEX and WISE.** Off the plane (|b| > 20° for GALEX AIS, > 10° for AllWISE) the fit
+also takes GALEX FUV/NUV (GUVcat_AIS) and AllWISE W1/W2. The UV is the extinction lever
+at low A_V (A_NUV/A_V = 2.9 vs 1.2 in g), but the models' UV flux of cool/active stars is
+uncertain at 0.1–0.3 mag, so NUV is kept only for BP−RP < 1.0 (~T_eff > 5300 K), FUV for
+BP−RP < 0.6, both with a 0.10 mag systematic. Their zero points are iterated **per T_eff
+bin** (the NewEra UV flux is ~0.35 mag too bright for G stars and the bias depends on
+T_eff; a global or frozen offset would leak into A_V), so what the UV adds is per-star
+precision and field structure, not an independent mean column. W1/W2 carry no dust signal
+(A_W1/A_V ≈ 0.06) — they anchor the Rayleigh–Jeans tail, i.e. the flux scale and, through
+the radius prior, T_eff, which is what the stars without a DESI prior lack. Both need the
+UV–IR model cache (`newera_uvir_cache.npz`, 900 Å–6 µm, [M/H] −2..+0.5, the default
+since v0.4.0); with the older 2500–25000 Å cache (`DUSTLINE_MODEL_CACHE=newera_full_cache.npz`)
+they are skipped with a message. `--no-uv` / `--no-mir` turn them off.
+
+What the COSMOS test found: WISE agrees with 2MASS and the models to a millimag (W1
+offset +0.001) and shifts the column by 0.002; GALEX NUV, after its per-T_eff zero point
+(+0.15/+0.18/+0.04 mag at 5000–5500/5500–6000/6000–6500 K: the models are too bright),
+leaves a star-to-star residual of 0.15–0.23 mag — σ(A_V) ≈ 0.065 per star through
+A_NUV/A_V = 2.9, worse than the 0.035 the XP + DESI fit already reaches. At A_V ≈ 0.06 the
+UV therefore changes per-star A_V by 0.000 ± 0.006 and the column not at all. It should
+start to pay at A_V ≳ 0.3, where the UV signal (≈ 0.9 mag) dwarfs the model noise.
+
 ## Example
 
 [examples/ob240669](examples/ob240669) is a complete run on the OGLE-2024-BLG-0669
-sightline (l 13.2°, b −1.6°; PS1 + 2MASS): R_V = 2.88 ± 0.53 from 986 stars, the A_I(D)
-table bridged to the red-clump column (A_V = 3.28 at 6.1 kpc), the law JSON and the two
-figures.
+sightline (l 13.2°, b −1.6°; PS1 + 2MASS): R_V = 2.84 ± 0.48 from 946 stars, the A_I(D)
+table bridged to the red-clump column (A_V = 3.33 at 6.1 kpc), the law JSON and the two
+figures. [examples/cosmos](examples/cosmos) is the high-latitude column-mode run.
 
 ![extinction run](examples/ob240669/extinction_run_I.png)
 

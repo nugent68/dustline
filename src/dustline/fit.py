@@ -43,17 +43,24 @@ PLX_ZP = -0.017            # Lindegren+2021 global zero point (mas)
 MIN_PLX_SNR_PRIOR = 3.0    # below this the radius prior is off
 PHOT_SYS_DEFAULT = 0.03    # per-band systematic added in quadrature
 NIR_PREFIXES = ("2MASS", "VISTA", "WISE")   # zero points frozen after pass 1
-FROZEN_PREFIXES = ("GALEX",)                # zero points never iterated (degenerate with A_V)
-UV_SYS = 0.10              # model UV flux systematic (GALEX bands), added in quadrature
+UV_PREFIXES = ("GALEX",)   # zero points iterated PER T_EFF BIN (the model UV bias is
+                           # T_eff dependent: ~0.35 mag too bright in NUV for G stars)
+UV_SYS = 0.15              # model UV flux systematic (GALEX bands): the NUV residual MAD about
+                           # the per-T_eff offsets is 0.15-0.23 mag on COSMOS (chromospheres etc.)
+UV_TEFF_EDGES = np.array([5000.0, 5500.0, 6000.0, 6500.0, 7000.0, 8000.0, 12000.0])
+UV_MIN_PER_BIN = 12
 MH_DEFAULT = (0.0,)
 MH_SPECTRO = None          # with spectroscopic priors: every [M/H] the model cache holds
+MH_FREE_RANGE = (-0.5, 0.5)   # stars WITHOUT a prior stay on this range (free [M/H] absorbs
+                              # the XP/NewEra residuals: COSMOS no-prior stars drifted to -2)
+MH_PENALTY = 1e4
 SPEC_COLS = ("teff_spec", "teff_spec_err", "logg_spec", "logg_spec_err",
              "feh_spec", "feh_spec_err")
 BATCH_MODELS = 64 * 735            # stars x models per batch (memory: ~2.5 GB of cubes)
 
 
 def _phot_sys(band: str) -> float:
-    if band.startswith(FROZEN_PREFIXES):
+    if band.startswith(UV_PREFIXES):
         return UV_SYS
     return 0.04 if band.endswith("_Y") or band.endswith("_y") else PHOT_SYS_DEFAULT
 
@@ -217,7 +224,8 @@ def _summarize(grid, chi2, chi2_prior, C, bands):
 def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
               offsets: dict[str, float] | None = None, law: str = "g23",
               batch: int = 0, max_stars: int = 0, spectro_priors: bool = True,
-              rv_fixed: float | None = None) -> pd.DataFrame:
+              rv_fixed: float | None = None,
+              star_offsets: pd.DataFrame | None = None) -> pd.DataFrame:
     """Fit every XP star; returns the per-star results table.
 
     With spectro_priors and ``teff_spec``/``logg_spec``/``feh_spec`` columns on
@@ -225,6 +233,8 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
     and each star with a prior gets spec_prior_chi2 added to its chi2.
     rv_fixed: restrict the R_V axis to the nearest grid value (column mode: at
     A_V ~ 0.1 R_V is unconstrained and only adds noise).
+    star_offsets: per-star zero-point offsets (source_id + off_<band> columns,
+    the T_eff-binned UV offsets) applied on top of the global ``offsets``.
     """
     use_spec = spectro_priors and all(c in stars.columns for c in SPEC_COLS) \
         and np.isfinite(stars.teff_spec).any()
@@ -239,6 +249,11 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
     zp = np.array([filters.get(b).zp_jy for b in bands]) * 1e-23
     ids = xp["source_id"]
     g = stars.set_index("source_id").loc[ids].reset_index()
+    if star_offsets is not None and len(star_offsets):
+        so = star_offsets.set_index("source_id").reindex(g.source_id).fillna(0.0)
+        for b in bands:
+            if f"off_{b}" in so:
+                g[f"mag_{b}"] = g[f"mag_{b}"].values - so[f"off_{b}"].values
     flux_all = xp["flux"].astype(np.float64)
     err_all = xp["flux_err"].astype(np.float64)
     wave = xp["wave_nm"]
@@ -276,6 +291,9 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
         chi2_prior[..., ~good] = 0.0
         if use_spec:
             chi2_spec, has_spec = spec_prior_chi2(grid["meta"], gs)
+            # no prior: keep the star on the solar-ish [M/H] range
+            outside = (grid["meta"][:, 2] < MH_FREE_RANGE[0]) | (grid["meta"][:, 2] > MH_FREE_RANGE[1])
+            chi2_spec[np.ix_(outside, ~has_spec)] = MH_PENALTY
             chi2_prior += chi2_spec[None, None, :, :]
         else:
             has_spec = np.zeros(len(gs), bool)
@@ -330,8 +348,8 @@ def measure_offsets(stars_fit: pd.DataFrame, bands: list[str], prev: dict[str, f
             off.setdefault(b, 0.0)
             continue
         med = float(d.median())
-        if b.startswith(FROZEN_PREFIXES):
-            off.setdefault(b, 0.0)       # UV zero points are never iterated
+        if b.startswith(UV_PREFIXES):
+            off.setdefault(b, 0.0)       # UV: handled per T_eff bin (uv_offsets_by_teff)
             continue
         is_nir = any(b.startswith(p) for p in NIR_PREFIXES)
         if freeze_all:
@@ -344,6 +362,41 @@ def measure_offsets(stars_fit: pd.DataFrame, bands: list[str], prev: dict[str, f
         if not is_nir:
             max_move = max(max_move, abs(med))
     return off, max_move
+
+
+def uv_offsets_by_teff(stars_fit: pd.DataFrame, bands: list[str], prev: dict,
+                       min_bands: int) -> tuple[dict, pd.DataFrame, float]:
+    """Cumulative UV zero-point offsets per T_eff bin (UV_TEFF_EDGES) from well-fit
+    stars, applied per star through its fitted T_eff (or its spectroscopic T_eff
+    when it has one).  Returns (table {band: {edges, offsets}}, per-star DataFrame
+    (source_id, off_<band>), largest move).  Bins with < UV_MIN_PER_BIN stars take
+    the global median.  The NewEra UV flux is too bright for G stars (~0.35 mag
+    in NUV at 5800 K) and the bias depends on T_eff, so a global offset - let
+    alone a frozen one - would leak into A_V."""
+    uv = [b for b in bands if b.startswith(UV_PREFIXES)]
+    r = stars_fit
+    teff = np.where(np.isfinite(r.get("teff_spec", pd.Series(np.nan, index=r.index))),
+                    r.get("teff_spec", pd.Series(np.nan, index=r.index)), r.teff)
+    ok = ((r.chi2_best * 3 / r.n_xp < 2.5) & (r.ruwe < 1.4)
+          & (r.ipd_frac_multi_peak <= 10) & (r.n_phot >= min_bands)).values
+    table, per_star, max_move = dict(prev), pd.DataFrame(dict(source_id=r.source_id.values)), 0.0
+    ibin = np.clip(np.digitize(teff, UV_TEFF_EDGES) - 1, 0, len(UV_TEFF_EDGES) - 2)
+    for b in uv:
+        d = r[f"dm_{b}"].values
+        prev_off = np.array(prev.get(b, {}).get("offsets", [0.0] * (len(UV_TEFF_EDGES) - 1)))
+        good = ok & np.isfinite(d)
+        glob = float(np.median(d[good])) if good.sum() >= UV_MIN_PER_BIN else 0.0
+        moves = np.zeros(len(prev_off))
+        for k in range(len(prev_off)):
+            m = good & (ibin == k)
+            moves[k] = float(np.median(d[m])) if m.sum() >= UV_MIN_PER_BIN else glob
+        new = np.round(prev_off + moves, 4)
+        table[b] = dict(edges=UV_TEFF_EDGES.tolist(), offsets=new.tolist(),
+                        n=[int((good & (ibin == k)).sum()) for k in range(len(new))])
+        per_star[f"off_{b}"] = new[ibin]
+        max_move = max(max_move, float(np.abs(moves[np.array(table[b]["n"]) >= UV_MIN_PER_BIN]).max()
+                                       if any(np.array(table[b]["n"]) >= UV_MIN_PER_BIN) else 0.0))
+    return table, per_star, max_move
 
 
 def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
@@ -365,17 +418,27 @@ def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str
     if out_path.exists() and not force:
         return pd.read_csv(out_path)
     offsets: dict[str, float] = {}
+    uv_table: dict = {}
+    star_off = None
+    has_uv = any(b.startswith(UV_PREFIXES) for b in bands)
     fit = None
-    for p in range(1 if freeze_offsets else max_passes):
-        print(f"--- fit pass {p + 1} (offsets: { {k: v for k, v in offsets.items()} })", flush=True)
+    for p in range(1 if freeze_offsets else max_passes + (1 if has_uv else 0)):
+        print(f"--- fit pass {p + 1} (offsets: { {k: v for k, v in offsets.items()} }"
+              + (f"; UV bins {uv_table}" if uv_table else "") + ")", flush=True)
         fit = fit_stars(ws, stars, xp, bands, offsets=offsets, law=law,
-                        spectro_priors=spectro_priors, rv_fixed=rv_fixed)
+                        spectro_priors=spectro_priors, rv_fixed=rv_fixed, star_offsets=star_off)
         offsets, moved = measure_offsets(fit, bands, offsets, min_bands_offsets,
                                          freeze_nir=(p >= 1), freeze_all=freeze_offsets)
-        json.dump(offsets, open(off_path, "w"), indent=1)
-        print(f"    offsets now {offsets} (largest optical move {moved:.3f})", flush=True)
+        if has_uv and not freeze_offsets:
+            uv_table, star_off, uv_moved = uv_offsets_by_teff(fit, bands, uv_table, min_bands_offsets)
+            moved = max(moved, uv_moved)
+        json.dump(dict(offsets, **{b: v for b, v in uv_table.items()}), open(off_path, "w"), indent=1)
+        print(f"    offsets now {offsets} (largest move {moved:.3f})"
+              + (f"\n    UV offsets by T_eff: {uv_table}" if uv_table else ""), flush=True)
         if p >= 1 and moved < converge:
             break
+    if star_off is not None:
+        fit = fit.merge(star_off, on="source_id", how="left")
     fit.round(5).to_csv(out_path, index=False)
     print(f"wrote {out_path}: {len(fit)} stars", flush=True)
     return fit

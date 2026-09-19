@@ -38,10 +38,14 @@ class Workspace:
     def has(self, name: str) -> bool:
         return (self.dir / name).exists()
 
-    def seed_from_sibling(self, names=("gaia.csv", "xp_continuous_raw.csv", "xp_sampled.npz")) -> list[str]:
-        """Copy position-only products (the Gaia cone and the XP spectra, which do not
-        depend on the config) from another workspace of the same position and radius,
-        so a changed option set does not repeat the hours-long XP fetch."""
+    def seed_from_sibling(self, names=("gaia.csv", "xp_continuous_raw.csv", "xp_sampled.npz",
+                                       "ps1_gaia.csv", "decals_gaia.csv", "decaps_gaia.csv",
+                                       "vvv_gaia.csv", "desi_gaia.csv", "galex_gaia.csv",
+                                       "galex_sfd.json", "wise_gaia.csv")) -> list[str]:
+        """Copy position-only products (the Gaia cone, the XP spectra and the per-survey
+        catalog matches, none of which depend on the option set) from another workspace
+        of the same position and radius, so a changed option set does not repeat the
+        hours-long XP fetch or the catalog queries."""
         import shutil
 
         prefix = self.dir.name.rsplit("_", 1)[0] + "_"

@@ -1,6 +1,12 @@
-"""Pan-STARRS1 DR2 mean PSF photometry (MAST catalogs API, paged), matched to
-the Gaia table at 0.7 arcsec.  Returns per-Gaia-source magnitudes in the PS1
-grizy bands (columns mag_PS1_g .. magerr_PS1_y).
+"""Pan-STARRS1 DR2 mean PSF photometry (MAST catalogs API), matched to the Gaia
+table at 0.7 arcsec.  Returns per-Gaia-source magnitudes in the PS1 grizy bands
+(columns mag_PS1_g .. magerr_PS1_y).
+
+The API's paging is not stable (rows are not ordered between pages: the same
+query returned page overlaps of 0, 180 and 6,936 rows in three trials, i.e.
+objects silently dropped or duplicated at every page boundary).  So no paging:
+a cone that fills a page is split into seven sub-cones, recursively, and the
+tiles are deduplicated on objID.
 """
 
 from __future__ import annotations
@@ -22,23 +28,34 @@ MATCH_ARCSEC = 0.7
 SYS_FLOOR = 0.02
 
 
-def _fetch_all(ra: float, dec: float, radius_deg: float) -> pd.DataFrame:
-    frames, page = [], 1
-    while True:
-        q = urllib.parse.urlencode({"ra": ra, "dec": dec, "radius": radius_deg,
-                                    "nDetections.gte": 3, "pagesize": 50000, "page": page,
-                                    "columns": ",".join(COLS)})
-        txt = urllib.request.urlopen(API + "?" + q, timeout=600).read().decode()
-        df = pd.read_csv(io.StringIO(txt))
-        if not len(df):
-            break
-        frames.append(df)
-        if len(df) < 50000:
-            break
-        page += 1
-    if not frames:
-        return pd.DataFrame(columns=COLS)
-    return pd.concat(frames, ignore_index=True).replace(-999.0, np.nan)
+PAGESIZE = 50000
+
+
+def _fetch_cone(ra: float, dec: float, radius_deg: float) -> pd.DataFrame:
+    q = urllib.parse.urlencode({"ra": ra, "dec": dec, "radius": radius_deg,
+                                "nDetections.gte": 3, "pagesize": PAGESIZE, "page": 1,
+                                "columns": ",".join(COLS)})
+    txt = urllib.request.urlopen(API + "?" + q, timeout=600).read().decode()
+    return pd.read_csv(io.StringIO(txt))
+
+
+def _fetch_all(ra: float, dec: float, radius_deg: float, depth: int = 0) -> pd.DataFrame:
+    """All PS1 objects in the cone without paging: a full page means the cone is
+    split into a centre tile and six around it (radius 0.65 r at distance 0.5 r
+    covers the disk), fetched recursively and deduplicated on objID."""
+    df = _fetch_cone(ra, dec, radius_deg)
+    if len(df) < PAGESIZE or depth > 6:
+        return df.replace(-999.0, np.nan) if len(df) else pd.DataFrame(columns=COLS)
+    cosd = max(np.cos(np.radians(dec)), 1e-3)
+    tiles = [(ra, dec)] + [(ra + 0.5 * radius_deg * np.cos(t) / cosd,
+                            dec + 0.5 * radius_deg * np.sin(t))
+                           for t in np.radians(np.arange(0, 360, 60))]
+    parts = [_fetch_all(r, d, 0.65 * radius_deg, depth + 1) for r, d in tiles]
+    out = pd.concat([p for p in parts if len(p)], ignore_index=True)
+    out = out.drop_duplicates("objID").reset_index(drop=True)
+    # cut the union of tiles back to the requested cone
+    sep = np.hypot((out.raMean - ra) * cosd, out.decMean - dec)
+    return out[sep <= radius_deg].reset_index(drop=True)
 
 
 def fetch(ws: Workspace, gaia: pd.DataFrame, force: bool = False) -> pd.DataFrame:

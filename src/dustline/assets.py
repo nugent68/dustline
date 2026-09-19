@@ -47,8 +47,8 @@ ASSETS: dict[str, dict] = {
     # tools/build_newera_uvir_cache.py).
     "newera_uvir_cache.npz": dict(
         tag="v0.4.0",
-        sha256=None,
-        size=None),
+        sha256="2e03d4f0c101e848faf9738132ea8db3af2f0d05afbf81dff1e2c38f2c6c8918",
+        size=214_319_883),
 }
 
 

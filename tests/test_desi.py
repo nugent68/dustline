@@ -52,6 +52,19 @@ def test_spec_prior_chi2_pulls_and_clamps():
     assert chi[1, 2] == pytest.approx(25.0)                    # ([M/H] 0 vs -0.5)/0.1
 
 
+def test_no_prior_star_stays_on_solar_range():
+    """A star without a prior must not reach the metal-poor models (handled in
+    fit_stars via MH_FREE_RANGE / MH_PENALTY on top of spec_prior_chi2)."""
+    from dustline.fit import MH_FREE_RANGE, MH_PENALTY, spec_prior_chi2
+    meta = np.array([[5000.0, 4.5, -2.0], [5000.0, 4.5, -0.5], [5000.0, 4.5, 0.0]])
+    spec = pd.DataFrame(dict(teff_spec=[np.nan], teff_spec_err=[np.nan], logg_spec=[np.nan],
+                             logg_spec_err=[np.nan], feh_spec=[np.nan], feh_spec_err=[np.nan]))
+    chi, has = spec_prior_chi2(meta, spec)
+    outside = (meta[:, 2] < MH_FREE_RANGE[0]) | (meta[:, 2] > MH_FREE_RANGE[1])
+    chi[np.ix_(outside, ~has)] = MH_PENALTY
+    assert chi[0, 0] == MH_PENALTY and chi[1, 0] == 0.0 and chi[2, 0] == 0.0
+
+
 def test_spec_prior_pulls_posterior():
     """A star whose data prefer model 0 but whose prior points to model 1."""
     from dustline.fit import _summarize
