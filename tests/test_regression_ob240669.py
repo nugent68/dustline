@@ -9,6 +9,9 @@ Pinned (dustline v0.2.0, PS1 + 2MASS, 9'):
 - clump: E(J-Ks) 0.52, A_V column 3.28 +/- 0.61 at D_RC 6.1 kpc;
 - run: A_I 0.42 / 0.89 / 1.09 / 1.21 / 1.32 at 1 / 2 / 3 / 4 / 5 kpc, bridged to
   1.92 beyond the clump (A_I/A_V = 0.587).
+
+The corresponding figures are in tests/figures/ob240669/ (law_rv.png,
+extinction_run_I.png) for visual comparison when the numbers drift.
 """
 
 import numpy as np
