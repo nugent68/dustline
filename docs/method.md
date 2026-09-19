@@ -46,6 +46,10 @@ common J/H/Ks shift is degenerate with the fit and iterating it drifts R_V by
 - Solar metallicity is assumed. Freeing [M/H] lets the extra models absorb the
   XP/NewEra residuals (Teff +225 K, R_V +0.35 — a failure mode, not a
   systematic; validated against APOGEE giants: T_eff bias +50 K at [M/H] ≳ −0.3).
+  The exception is a field with DESI MWS parameters (high latitude): there each
+  star with a DESI spectrum carries a Gaussian prior on (T_eff, log g, [Fe/H])
+  and the [M/H] axis (−0.5/0/+0.5) is opened — the prior, not the XP residuals,
+  then sets the metallicity.
 - The G23 curve family is adequate to < 3 % over 450–950 nm on the validated
   sightlines; the R_V you get is the G23 R_V.
 - The run covers the parallax-supported range (typically ≲ 5–7 kpc at plx
@@ -55,6 +59,27 @@ common J/H/Ks shift is degenerate with the fit and iterating it drifts R_V by
   beyond the last bin.
 - Quality cuts throughout: ruwe < 1.4, ipd_frac_multi_peak ≤ 10, χ²/n < 2.5,
   ≥ 4 photometric bands, A_V < 7.9 (grid edge).
+
+## Column mode (|b| > 30°)
+
+No A_V ≥ 2 stars, so R_V is not measurable: G23 at R_V = 3.1 is assumed (and
+held fixed in the per-star fits) and the product is the total foreground
+column, the median A_V of the plx S/N > 5 F/G stars (T_eff ≥ 5500 K) beyond
+0.5 kpc (behind all the local dust), with a bootstrap error, the star-to-star
+MAD, the cool-star / spectroscopic-prior / G-magnitude splits, and a cell map
+of the field. What the COSMOS test (examples/cosmos, SFD A_V ≈ 0.05) showed:
+- K/M dwarfs (mostly G > 15.5) return A_V ≈ 0.2–0.3: a cool-template / faint-XP
+  systematic, not dust — hence the T_eff cut on the headline number.
+- Without DESI priors the F/G fits run ~155 K hot and absorb it as +0.08 mag of
+  A_V (the T_eff–A_V degeneracy at R ≈ 50); with the priors the F/G column is
+  0.086 ± 0.006 (MAD 0.048) instead of 0.170 ± 0.011 (MAD 0.105).
+- The residual ~0.03–0.04 mag above SFD for the DESI-anchored F/G stars (the
+  brightest, G < 14, give 0.04) is the method's floor at low A_V, set by the
+  XP/NewEra residuals once T_eff is pinned. The zero-point offsets converged at
+  |Δ| ≤ 0.016 mag, so the screen / zero-point degeneracy (`freeze_offsets`
+  control) is not what sets it.
+- The NewEra cache only reaches [M/H] = −0.5, so metal-poor halo stars sit at
+  the grid edge (`mh_clamped`, 87 of 253 prior stars on COSMOS).
 
 ## Validated against
 

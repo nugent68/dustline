@@ -1,6 +1,7 @@
 """Ensemble products from the per-star fits: the sightline extinction law
 (R_V, band ratios) and the extinction-distance run A_V(D) from the Gaia
-parallax stars, with an optional red-clump bulge bridge.
+parallax stars, with an optional red-clump bulge bridge; at high latitude
+(column mode) the assumed-law dict and the foreground column instead.
 """
 
 from __future__ import annotations
@@ -12,6 +13,10 @@ from . import extinction, models
 
 D_FINE = np.arange(0.1, 12.01, 0.1)
 MIN_AV_LAW = 2.0        # A_V above which a star enters the law average
+RV_ASSUMED = 3.1        # column mode: the law is not measurable, G23 at this R_V is assumed
+D_BEHIND_KPC = 0.5      # column mode: stars beyond this are behind all the local dust
+TEFF_CLEAN = 5500.0     # column mode: K/M dwarfs return spurious A_V ~ 0.2 (template/XP
+                        # systematics at low A_V; COSMOS test), F/G stars do not
 CHI2N_MAX = 2.5
 RUWE_MAX = 1.4
 IPD_MAX = 10
@@ -73,6 +78,85 @@ def measure_law(fit: pd.DataFrame, bands: list[str], min_snr: float = 2.0,
                 rv_16=float(np.percentile(rv, 16)), rv_84=float(np.percentile(rv, 84)),
                 systematics="NIR zero-point freeze +/-0.05 on R_V; XP blue-end "
                             "systematics for faint heavily-reddened stars (see docs)")
+
+
+def default_law(bands: list[str], rv: float = RV_ASSUMED, reason: str = "") -> dict:
+    """The law dict when R_V cannot be measured: G23 at the assumed R_V, band
+    ratios from the reference red-giant SED (band_ratio_at_rv). n_stars = 0 and
+    rv_assumed = True mark it; rv_mad / rv_16 / rv_84 are 0."""
+    ratios = {b: band_ratio_at_rv(b, rv) for b in bands}
+    return dict(rv=float(rv), rv_mad=0.0, rv_mean=float(rv), rv_mean_err=0.0, n_stars=0,
+                min_av=float(MIN_AV_LAW), ratios_av=ratios,
+                ratios_av_mad={b: 0.0 for b in bands}, rv_16=float(rv), rv_84=float(rv),
+                rv_assumed=True, mode="column",
+                systematics="R_V not measured (no A_V >= 2 stars): G23 at R_V = "
+                            f"{rv:g} assumed" + (f"; {reason}" if reason else ""))
+
+
+def foreground_column(fit: pd.DataFrame, d_min_kpc: float = D_BEHIND_KPC,
+                      min_snr: float = 5.0, min_bands: int = 4, ncell: int = 4,
+                      n_boot: int = 300, seed: int = 0) -> dict:
+    """The total foreground A_V of a high-latitude field from the parallax
+    stars behind the local dust (D > d_min_kpc): median, MAD, bootstrap error
+    of the median, inverse-variance mean, N; the same for the subsets with and
+    without a spectroscopic prior, for T_eff above/below TEFF_CLEAN and by G
+    magnitude; and an ncell x ncell map of the median A_V across the field
+    (tangent plane, cells ordered by increasing x then y).
+
+    ``clean`` (T_eff >= TEFF_CLEAN) is the recommended column: on the COSMOS
+    test field the K/M dwarfs (mostly G > 15.5) return A_V ~ 0.2-0.3 against
+    an SFD column of 0.05 - a cool-template / faint-XP systematic that the
+    F/G stars (0.07-0.09) do not show. ``all`` keeps everything for reference."""
+    s = fit[good_sample(fit, min_snr, min_bands) & (fit.D_kpc > d_min_kpc)]
+    has_spec = s["spec_prior"].astype(bool) if "spec_prior" in s else pd.Series(False, index=s.index)
+
+    def stats(a: pd.DataFrame) -> dict:
+        if len(a) == 0:
+            return dict(n=0, av=np.nan, av_mad=np.nan, av_err=np.nan, av_wmean=np.nan)
+        av = a.av.values
+        med = float(np.median(av))
+        mad = float(1.4826 * np.median(np.abs(av - med)))
+        rng = np.random.default_rng(seed)
+        boot = [np.median(rng.choice(av, len(av))) for _ in range(n_boot)] if len(av) > 3 else [med]
+        w = 1.0 / np.maximum(a.av_err.values, 0.03) ** 2
+        return dict(n=int(len(a)), av=med, av_mad=mad, av_err=float(np.std(boot)),
+                    av_wmean=float((w * av).sum() / w.sum()))
+
+    out = dict(d_min_kpc=float(d_min_kpc), teff_clean=float(TEFF_CLEAN), **stats(s))
+    hot = s.teff >= TEFF_CLEAN
+    out["clean"] = stats(s[hot])
+    out["clean_with_spec_prior"] = stats(s[hot & has_spec])
+    out["with_spec_prior"] = stats(s[has_spec])
+    out["without_spec_prior"] = stats(s[~has_spec])
+    out["teff_hot"] = out["clean"]
+    out["teff_cool"] = stats(s[~hot])
+    gmag = s["phot_g_mean_mag"] if "phot_g_mean_mag" in s else pd.Series(np.nan, index=s.index)
+    out["by_gmag"] = {f"{lo:g}-{hi:g}": stats(s[(gmag >= lo) & (gmag < hi)])
+                      for lo, hi in ((8, 14), (14, 15.5), (15.5, 16.5), (16.5, 18))}
+    if has_spec.any():
+        a = s[has_spec]
+        out["teff_spec_minus_fit"] = float(np.median(a.teff_spec - a.teff))
+        out["n_mh_clamped"] = int(a["mh_clamped"].sum()) if "mh_clamped" in a else 0
+    # spatial map: tangent-plane cells over the field (clean stars)
+    s = s[hot]
+    if len(s) and ncell > 1:
+        ra0, dec0 = float(fit.ra.median()), float(fit.dec.median())
+        x = (s.ra - ra0) * np.cos(np.radians(dec0))
+        y = s.dec - dec0
+        r = float(np.hypot(x, y).max())
+        edges = np.linspace(-r, r, ncell + 1)
+        ix = np.clip(np.digitize(x, edges) - 1, 0, ncell - 1)
+        iy = np.clip(np.digitize(y, edges) - 1, 0, ncell - 1)
+        cells = []
+        for j in range(ncell):
+            for i in range(ncell):
+                m = (ix == i) & (iy == j)
+                cells.append(dict(x=float(0.5 * (edges[i] + edges[i + 1])),
+                                  y=float(0.5 * (edges[j] + edges[j + 1])),
+                                  n=int(m.sum()),
+                                  av=float(np.median(s.av[m])) if m.sum() >= 5 else None))
+        out["map"] = dict(ra0=ra0, dec0=dec0, half_width_deg=r, ncell=ncell, cells=cells)
+    return out
 
 
 def dust_run(fit: pd.DataFrame, min_snr: float = 5.0, min_bands: int = 4) -> pd.DataFrame:

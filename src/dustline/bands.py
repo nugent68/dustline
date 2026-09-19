@@ -4,7 +4,9 @@ user photometry into one per-star table whose photometric columns are named
 registry (e.g. mag_PS1_g, mag_2MASS_Ks, mag_VISTA_J, mag_DECam_i).
 
 The fit uses whatever bands are present; the *band list* of a run is the union
-of the columns delivered here.
+of the columns delivered here.  Spectroscopic template priors (DESI MWS
+T_eff/log g/[Fe/H], columns ``teff_spec`` ...) ride on the same table when the
+plan asks for them.
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from .cache import Workspace
-from .catalogs import decals, decaps, ps1, vvv
+from .catalogs import decals, decaps, desi, ps1, vvv
 from .catalogs.footprint import SurveyPlan
 
 TMASS_SYS = 0.03    # systematic added to 2MASS errors when used as a VVV fallback
@@ -55,6 +57,12 @@ def assemble(ws: Workspace, gaia: pd.DataFrame, plan: SurveyPlan,
                 df.loc[use2m, f"mag_VISTA_{b}"] = df.loc[use2m, f"mag_2MASS_{b}"]
                 df.loc[use2m, f"magerr_VISTA_{b}"] = np.sqrt(
                     df.loc[use2m, f"magerr_2MASS_{b}"] ** 2 + TMASS_SYS ** 2)
+
+    # --- spectroscopic template priors (DESI DR1 MWS), joined by Gaia source_id ---
+    if plan.spectro == "desi":
+        sp = desi.fetch(ws, gaia, force=force)
+        if len(sp):
+            df = df.merge(sp, on="source_id", how="left")
 
     # --- user photometry overrides/augments everything ---
     if user_phot is not None:

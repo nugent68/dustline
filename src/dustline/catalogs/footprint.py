@@ -10,6 +10,14 @@ where their footprints allow:
   disk 295 < l < 350, |b| < 2 (approximate DR footprints).
 - DECaLS (DECam grz): Dec < 32, |b| > ~15 (extragalactic program) - a fallback
   for southern high-latitude fields where PS1 is absent (Dec < -30).
+
+Beyond photometry the plan also records
+- ``spectro``: whether DESI DR1 Milky Way Survey stellar parameters (T_eff,
+  log g, [Fe/H]) are available as per-star template priors (the DR1 footprint:
+  high latitude, Dec > -25 approximately);
+- ``mode``: "law" (the bulge/plane product: measured R_V + A_V(D) to kpc) or
+  "column" (high latitude, |b| > 30: too little dust to measure R_V; the product
+  is the total foreground column from the stars behind the dust).
 """
 
 from __future__ import annotations
@@ -28,6 +36,8 @@ class SurveyPlan:
     nir: str                # "2mass" | "vvv"
     in_bulge_window: bool   # red-clump anchor possible (|l| < 10, |b| < 10)
     notes: list[str]
+    spectro: str = "none"   # "desi" | "none": per-star spectroscopic template priors
+    mode: str = "law"       # "law" | "column"
 
 
 def galactic(ra: float, dec: float) -> tuple[float, float]:
@@ -71,4 +81,16 @@ def plan(ra: float, dec: float, prefer_deep: bool = True) -> SurveyPlan:
     # clump.find_clump applies its own credibility gates (window population,
     # E(J-Ks) > 0.15, D_RC within 5-12 kpc), so a generous window is safe.
     in_bulge = (abs(lw) < 20.0) and (abs(lat) < 10.0)
-    return SurveyPlan(optical=optical, nir=nir, in_bulge_window=in_bulge, notes=notes)
+
+    # --- DESI DR1 MWS stellar parameters: the high-latitude DESI footprint ---
+    # (Dec > -25, |b| > 15 is a generous cut; an empty query is harmless)
+    spectro = "desi" if (dec > -25.0 and abs(lat) > 15.0) else "none"
+    if spectro == "desi":
+        notes.append("DESI DR1 MWS stellar parameters as template priors")
+
+    # --- product mode: no measurable law at high latitude ---
+    mode = "column" if abs(lat) > 30.0 else "law"
+    if mode == "column":
+        notes.append("high latitude: foreground-column mode (R_V assumed 3.1)")
+    return SurveyPlan(optical=optical, nir=nir, in_bulge_window=in_bulge, notes=notes,
+                      spectro=spectro, mode=mode)

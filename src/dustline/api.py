@@ -41,10 +41,23 @@ class ExtinctionResult:
         """The red-clump bulge anchor used for the bridge (None off the bulge)."""
         return self.law.get("clump_anchor")
 
-    def plots(self, band: str = DEFAULT_FILTER, directory: str | None = None) -> dict:
-        """Write the two diagnostic figures; returns {'law': path, 'run': path}.
+    @property
+    def mode(self) -> str:
+        """"law" (measured R_V + run) or "column" (high latitude: foreground column)."""
+        return self.law.get("mode", "law")
 
-        - law: per-star R_V vs A_V (the law sample) + R_V histogram;
+    @property
+    def column(self) -> dict | None:
+        """Column mode: the foreground A_V of the field (ensemble.foreground_column)."""
+        return self.law.get("column")
+
+    def plots(self, band: str = DEFAULT_FILTER, directory: str | None = None,
+              reference_av: float | None = None) -> dict:
+        """Write the diagnostic figures; returns {'law' | 'column': path, 'run': path}.
+
+        - law (law mode): per-star R_V vs A_V (the law sample) + R_V histogram;
+        - column (column mode): per-star A_V vs D with the foreground column and
+          its field map (reference_av: e.g. the SFD/Planck A_V, drawn for comparison);
         - run: A_X vs D for the plx S/N > 5 stars coloured by fitted T_eff, the
           running median with the 16-84 % band, and the dashed red-clump bridge.
         """
@@ -56,15 +69,22 @@ class ExtinctionResult:
         d.mkdir(parents=True, exist_ok=True)
         fit = self.stars
         tag = (f"({self._ws.ra:.4f}, {self._ws.dec:.4f})")
-        out = {"law": str(d / "law_rv.png"), "run": str(d / f"extinction_run_{band}.png")}
-        plotting.plot_law(fit, self.law, out["law"],
-                          title=f"{tag}: R$_V$ = {self.law['rv']:.2f} $\\pm$ "
-                                f"{self.law['rv_mad']:.2f} ({self.law['n_stars']} stars)")
+        out = {"run": str(d / f"extinction_run_{band}.png")}
+        if self.mode == "column":
+            out["column"] = str(d / "column_av.png")
+            plotting.plot_column(fit, self.law, out["column"], reference_av=reference_av,
+                                 title=f"{tag}: foreground column")
+        else:
+            out["law"] = str(d / "law_rv.png")
+            plotting.plot_law(fit, self.law, out["law"],
+                              title=f"{tag}: R$_V$ = {self.law['rv']:.2f} $\\pm$ "
+                                    f"{self.law['rv_mad']:.2f} ({self.law['n_stars']} stars)")
         ratio = (self.law["ratios_av"].get(band)
                  or ensemble.band_ratio_at_rv(band, self.law["rv"]))
         plotting.plot_run(fit, self.law, self._run_av, out["run"], band=band, ratio=ratio,
                           title=f"{tag}: extinction vs distance ({band})")
-        print(f"wrote {out['law']}\nwrote {out['run']}")
+        for k in out.values():
+            print(f"wrote {k}")
         return out
 
     @property
@@ -97,6 +117,12 @@ class ExtinctionResult:
 
     def __repr__(self) -> str:  # pragma: no cover
         d = self._run_av
+        if self.mode == "column" and self.column:
+            c = self.column["clean"]
+            return (f"ExtinctionResult(column A_V {c['av']:.3f} +/- {c['av_err']:.3f} "
+                    f"({c['n']} F/G stars beyond {self.column['d_min_kpc']:g} kpc; "
+                    f"R_V {self.law['rv']:g} assumed), "
+                    f"run {d.D_kpc.min():.1f}-{d.D_kpc.max():.1f} kpc)")
         return (f"ExtinctionResult(R_V {self.law['rv']:.2f} +/- {self.law['rv_mad']:.2f} "
                 f"({self.law['n_stars']} stars), run {d.D_kpc.min():.1f}-{d.D_kpc.max():.1f} kpc)")
 
@@ -110,16 +136,31 @@ class Sightline:
     radius_arcmin : float    field radius (default 5'); larger = more stars, slower
     photometry : UserPhotometry | None    your own calibrated photometry
     prefer_deep : bool       use DECaPS/VVV instead of PS1/2MASS where available
+    spectro_priors : bool    use DESI MWS T_eff/log g/[Fe/H] as per-star template
+                             priors where the footprint has them (high latitude)
+    freeze_offsets : bool    hold the photometric zero points at 0 instead of
+                             iterating them (the A/B control in column mode)
     """
 
     def __init__(self, ra: float, dec: float, radius_arcmin: float = DEFAULT_RADIUS_ARCMIN,
-                 photometry: UserPhotometry | None = None, prefer_deep: bool = True):
+                 photometry: UserPhotometry | None = None, prefer_deep: bool = True,
+                 spectro_priors: bool = True, freeze_offsets: bool = False):
         self.ra, self.dec = float(ra), float(dec)
         self.radius_arcmin = float(radius_arcmin)
         self.photometry = photometry
         self.plan = footprint.plan(self.ra, self.dec, prefer_deep=prefer_deep)
+        if not spectro_priors:
+            self.plan.spectro = "none"
+        self.freeze_offsets = bool(freeze_offsets)
         config = dict(optical=self.plan.optical, nir=self.plan.nir,
                       user_phot=str(photometry.path) if photometry else None)
+        # non-default options only, so the cache keys of plain law-mode runs are unchanged
+        if self.plan.spectro != "none":
+            config["spectro"] = self.plan.spectro
+        if self.plan.mode != "law":
+            config["mode"] = self.plan.mode
+        if self.freeze_offsets:
+            config["freeze_offsets"] = True
         self.ws = Workspace(self.ra, self.dec, self.radius_arcmin, config)
 
     def run(self, force: bool = False, chunk: int = 200) -> ExtinctionResult:
@@ -155,14 +196,33 @@ class Sightline:
                                "user photometry - the XP-only fit is biased and refused")
 
         # 3. per-star fits with zero-point iteration
-        fit = fit_mod.run_fit_with_offsets(self.ws, stars, xp, band_list, force=force)
+        #    (column mode: R_V held at the assumed value - unconstrained at A_V ~ 0.1)
+        fit = fit_mod.run_fit_with_offsets(
+            self.ws, stars, xp, band_list, force=force,
+            spectro_priors=(self.plan.spectro != "none"), freeze_offsets=self.freeze_offsets,
+            rv_fixed=ensemble.RV_ASSUMED if self.plan.mode == "column" else None)
 
-        # 4. ensemble products
-        law = ensemble.measure_law(fit, band_list)
+        # 4. ensemble products: the measured law, or the assumed one where there
+        #    is no reddening to measure it (column mode / too few A_V >= 2 stars)
+        if self.plan.mode == "column":
+            law = ensemble.default_law(band_list, reason="high-latitude column mode")
+        else:
+            try:
+                law = ensemble.measure_law(fit, band_list)
+            except RuntimeError as e:
+                print(f"law not measured: {e}")
+                law = ensemble.default_law(band_list, reason=str(e).split(" - ")[0])
         run_av = ensemble.dust_run(fit)
         law["bands"] = band_list
         law["n_fitted"] = int(len(fit))
-        law["survey_plan"] = dict(optical=self.plan.optical, nir=self.plan.nir)
+        law["n_spec_prior"] = int(fit["spec_prior"].sum()) if "spec_prior" in fit else 0
+        law["survey_plan"] = dict(optical=self.plan.optical, nir=self.plan.nir,
+                                  spectro=self.plan.spectro, mode=self.plan.mode)
+        off_path = self.ws.path("phot_offsets.json")
+        law["phot_offsets"] = json.loads(off_path.read_text()) if off_path.exists() else {}
+        law["offsets_frozen"] = self.freeze_offsets
+        if self.plan.mode == "column":
+            law["column"] = ensemble.foreground_column(fit)
 
         # 5. red-clump bulge bridge (bulge window only)
         if self.plan.in_bulge_window:
@@ -183,8 +243,16 @@ class Sightline:
         json.dump(law, open(result_path, "w"), indent=1)
         run_av.round(4).to_csv(run_path, index=False)
         rv = law["rv"]
-        print(f"dustline: R_V = {rv:.2f} +/- {law['rv_mad']:.2f} ({law['n_stars']} stars); "
-              f"run to {run_av.D_kpc.max():.1f} kpc")
+        if law.get("mode") == "column":
+            c = law["column"]
+            h = c["clean"]
+            print(f"dustline: foreground column A_V = {h['av']:.3f} +/- {h['av_err']:.3f} "
+                  f"(MAD {h['av_mad']:.3f}, {h['n']} F/G stars beyond {c['d_min_kpc']:g} kpc; "
+                  f"all {c['n']} stars: {c['av']:.3f}; {law['n_spec_prior']} with DESI priors); "
+                  f"R_V = {rv:g} assumed")
+        else:
+            print(f"dustline: R_V = {rv:.2f} +/- {law['rv_mad']:.2f} ({law['n_stars']} stars); "
+                  f"run to {run_av.D_kpc.max():.1f} kpc")
         return ExtinctionResult(self.ws, law, run_av, self.plan)
 
 

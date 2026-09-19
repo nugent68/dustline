@@ -77,6 +77,37 @@ res = dustline.Sightline(ra, dec, photometry=phot).run()
   A_X vs D coloured by T_eff, the running median with its 16–84 % band, and the dashed
   clump bridge when present).
 
+## High-latitude fields: column mode
+
+Above |b| ≈ 30° there is no A_V ≥ 2 star to measure R_V with, and all the dust sits within
+a few hundred pc. The pipeline then switches to **column mode** (`plan.mode == "column"`):
+G23 at R_V = 3.1 is assumed (and held in the per-star fits), the A_V(D) run is still
+produced, and the product is the **total foreground column** — the median A_V of the
+F/G parallax stars (T_eff ≥ 5500 K) behind the dust (D > 0.5 kpc), its bootstrap error
+and star-to-star MAD, the same for the cool stars, the stars with / without a
+spectroscopic prior and per G-magnitude bin, and a coarse map of the column across the
+field (`res.column`, `column_av.png`). Meant for extragalactic fields, as an independent
+check of SFD/Planck-type foregrounds. On the COSMOS test field
+([examples/cosmos](examples/cosmos)) the F/G column is 0.086 ± 0.006 against SFD's 0.05,
+i.e. the method's floor at low A_V is ~0.03–0.04 mag; the K/M dwarfs return a spurious
+0.2 and are excluded from the headline number.
+
+**DESI priors.** Where the DESI DR1 Milky Way Survey covers the field (Dec > −25,
+|b| > 15), each Gaia XP star with a DESI spectrum gets its `T_eff`, `log g`, `[Fe/H]`
+(NOIRLab Data Lab `desi_dr1.mws`, joined on Gaia `source_id`) as a Gaussian prior on the
+NewEra template, and the [M/H] axis of the grid opens to −0.5/0/+0.5. At low A_V this
+removes the T_eff–A_V degeneracy that otherwise dominates the per-star error: on COSMOS
+the free fit runs 155 K hot on F/G stars and compensates with +0.08 mag of A_V; the prior
+halves both the bias and the per-star scatter (0.095 → 0.031). Stars with [Fe/H] below
+−0.5 sit at the grid edge and are flagged `mh_clamped`. `--no-spectro`
+turns the priors off (separate cache) for an A/B comparison; `--freeze-offsets` holds the
+photometric zero points at 0 instead of iterating them, the control for the partial
+degeneracy between a uniform A_V screen and the optical zero points.
+
+```bash
+dustline run 150.12 2.21 --radius 30 --ref-av 0.05 --plots cosmos/   # COSMOS, 0.5 deg
+```
+
 ## Example
 
 [examples/ob240669](examples/ob240669) is a complete run on the OGLE-2024-BLG-0669
@@ -91,7 +122,8 @@ figures.
 - The first run per sightline fetches XP spectra star-by-star from the Gaia archive
   (~1.8 s each, typically 2,000–6,000 stars) — hours. It is resumable and fully cached.
 - Everything rests on Gaia: sightlines need enough XP + parallax stars (crowded
-  low-latitude fields are fine; very high latitudes have little dust to measure).
+  low-latitude fields are fine; very high latitudes have little dust to measure —
+  there the product is the foreground column, see above).
 - XP spectra of faint (G > 16), heavily reddened stars carry blue-end calibration
   systematics; the per-star law cut and residual stacking guard against them, but see
   the method paper for the shape caveats.

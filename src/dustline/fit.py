@@ -7,11 +7,15 @@ Model:  F_obs(lam) = C * F_NewEra(Teff, logg, [M/H]=0) * 10^(-0.4 A_V ext(lam; R
         (log R_impl - log R_MIST(Teff, logg))^2 / sigma^2, R_impl = D sqrt(C),
         D = 1/parallax, breaks the Teff-A_V degeneracy of A/F stars at R ~ 50.
 Grid:   NewEra ([M/H] 0, Teff >= 3200 K, all log g) x A_V 0-8 (0.1) x
-        R_V 2.3-5.55 (0.25, the G23 range).
+        R_V 2.3-5.55 (0.25, the G23 range).  With spectroscopic priors
+        (DESI MWS T_eff/log g/[Fe/H] on the star table) the [M/H] axis opens
+        to -0.5/0/+0.5 and a Gaussian prior on (Teff, logg, [M/H]) is added
+        to the per-star chi2 (spec_prior_chi2).
 
 Hard-won pipeline rules baked in (see the dustline method notes):
 - never fit XP alone (T_eff biased cool, R_V ~ 4.4): photometry is required;
-- [M/H] fixed at 0 (free [M/H] absorbs XP/NewEra residual systematics);
+- [M/H] fixed at 0 unless a per-star spectroscopic prior constrains it (free
+  [M/H] absorbs XP/NewEra residual systematics);
 - Lindegren+2021 parallax zero point -0.017 mas;
 - photometric zero-point offsets iterated, but NIR offsets FROZEN after the
   first pass (iterating them drifts a common JHK shift, R_V +0.04/pass).
@@ -39,19 +43,28 @@ PLX_ZP = -0.017            # Lindegren+2021 global zero point (mas)
 MIN_PLX_SNR_PRIOR = 3.0    # below this the radius prior is off
 PHOT_SYS_DEFAULT = 0.03    # per-band systematic added in quadrature
 NIR_PREFIXES = ("2MASS", "VISTA")
+MH_DEFAULT = (0.0,)
+MH_SPECTRO = (-0.5, 0.0, 0.5)      # the cache's [M/H] axis, opened with spectroscopic priors
+SPEC_COLS = ("teff_spec", "teff_spec_err", "logg_spec", "logg_spec_err",
+             "feh_spec", "feh_spec_err")
+BATCH_MODELS = 64 * 735            # stars x models per batch (memory: ~2.5 GB of cubes)
 
 
 def _phot_sys(band: str) -> float:
     return 0.04 if band.endswith("_Y") or band.endswith("_y") else PHOT_SYS_DEFAULT
 
 
-def build_grid(ws: Workspace, bands: list[str], law: str = "g23") -> dict:
+def build_grid(ws: Workspace, bands: list[str], law: str = "g23",
+               mh: tuple[float, ...] = MH_DEFAULT) -> dict:
     """Model products on the fit sub-grid: XP-resolution spectra, band f_nu,
     per-(R_V, A_V) band extinctions, the radius prior.  Cached in the shared
-    asset cache keyed by the band list + law (reused across sightlines)."""
+    asset cache keyed by the band list + law (+ the [M/H] axis when it is not
+    the solar default), reused across sightlines."""
     from . import assets
 
-    key = hashlib.sha256(("|".join(bands) + law).encode()).hexdigest()[:10]
+    mh = tuple(float(m) for m in mh)
+    tag = "" if mh == MH_DEFAULT else "mh" + ",".join(f"{m:+.1f}" for m in mh)
+    key = hashlib.sha256(("|".join(bands) + law + tag).encode()).hexdigest()[:10]
     path = assets.cache_dir() / f"xp_grid_{law}_{key}.npz"
     if path.exists():
         d = np.load(path, allow_pickle=False)
@@ -60,7 +73,7 @@ def build_grid(ws: Workspace, bands: list[str], law: str = "g23") -> dict:
         return out
     t0 = time.time()
     wave, flux, meta = models.load_cache()
-    sel = models.sub_grid(meta, teff=(3200, 12000), logg=(0.0, 6.0), mh=(0.0,))
+    sel = models.sub_grid(meta, teff=(3200, 12000), logg=(0.0, 6.0), mh=mh)
     meta, flux = meta[sel], flux[sel]
     xp_wave = np.arange(336.0, 1021.0, 2.0)
     K = models.xp_lsf_matrix(wave, xp_wave)
@@ -79,7 +92,11 @@ def build_grid(ws: Workspace, bands: list[str], law: str = "g23") -> dict:
             A_band[r, a] = np.stack(
                 [-2.5 * np.log10(fe[b] / fnu0[:, k]) for k, b in enumerate(bands)], axis=1)
         print(f"  grid: band extinction R_V {rv:.2f} ({time.time() - t0:.0f} s)", flush=True)
-    rprior = models.radius_prior(meta)
+    # the MIST radius prior at each model's own metallicity
+    rprior = np.zeros((len(meta), 2))
+    for m in np.unique(meta[:, 2]):
+        k = meta[:, 2] == m
+        rprior[k] = models.radius_prior(meta[k], feh=float(m))
     out = dict(meta=meta, xp_wave=xp_wave, m_xp=m_xp.astype(np.float32),
                ext_xp=ext_xp.astype(np.float32), fnu0=fnu0.astype(np.float64),
                A_band=A_band, rprior=rprior, av=AV_GRID, rv=RV_GRID,
@@ -121,11 +138,38 @@ def _fit_batch(grid, flux, err, plx, plx_err, phot_f, phot_w):
     return chi2, chi2_prior, C
 
 
+def spec_prior_chi2(meta: np.ndarray, spec: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Gaussian spectroscopic prior on (Teff, logg, [M/H]) per (model, star):
+    (chi2 (NM, Ns), has_prior (Ns,)).  Stars without a finite prior get zeros.
+    The [Fe/H] prior is clamped to the grid's [M/H] range, so a star outside it
+    (e.g. [Fe/H] -1.5 on a -0.5..+0.5 grid) sits at the edge without a penalty;
+    the caller flags those (mh_clamped)."""
+    ns = len(spec)
+    out = np.zeros((len(meta), ns))
+    if ns == 0 or "teff_spec" not in spec.columns:
+        return out, np.zeros(ns, bool)
+    t, te = spec.teff_spec.values.astype(float), spec.teff_spec_err.values.astype(float)
+    g, ge = spec.logg_spec.values.astype(float), spec.logg_spec_err.values.astype(float)
+    z, ze = spec.feh_spec.values.astype(float), spec.feh_spec_err.values.astype(float)
+    has = np.isfinite(t) & np.isfinite(g) & np.isfinite(z)
+    if not has.any():
+        return out, has
+    te = np.maximum(np.nan_to_num(te, nan=100.0), 30.0)
+    ge = np.maximum(np.nan_to_num(ge, nan=0.3), 0.05)
+    ze = np.maximum(np.nan_to_num(ze, nan=0.3), 0.05)
+    zc = np.clip(z, meta[:, 2].min(), meta[:, 2].max())
+    chi = (((meta[:, 0][:, None] - t[None, :]) / te[None, :]) ** 2
+           + ((meta[:, 1][:, None] - g[None, :]) / ge[None, :]) ** 2
+           + ((meta[:, 2][:, None] - zc[None, :]) / ze[None, :]) ** 2)
+    out[:, has] = chi[:, has]
+    return out, has
+
+
 def _summarize(grid, chi2, chi2_prior, C, bands):
     """Per-star best-fit + posterior summaries from the chi2 cubes."""
     tot = chi2 + chi2_prior
     meta = grid["meta"]
-    teff, logg = meta[:, 0], meta[:, 1]
+    teff, logg, mh = meta[:, 0], meta[:, 1], meta[:, 2]
     rows = []
     for s in range(tot.shape[-1]):
         t = tot[..., s]
@@ -142,17 +186,18 @@ def _summarize(grid, chi2, chi2_prior, C, bands):
 
         tm, ts = mstd(teff, pr)
         gm, gs = mstd(logg, pr)
+        zm, zs = mstd(mh, pr)
         am, as_ = mstd(grid["av"], pav)
         rm, rs = mstd(grid["rv"], prv)
         Ab = np.einsum("ram,ramb->b", L, grid["A_band"])
         Ab2 = np.einsum("ram,ramb->b", L, grid["A_band"] ** 2)
         Abs = np.sqrt(np.maximum(Ab2 - Ab ** 2, 0.0))
-        row = dict(teff_best=teff[k[2]], logg_best=logg[k[2]], imodel=k[2],
+        row = dict(teff_best=teff[k[2]], logg_best=logg[k[2]], mh_best=mh[k[2]], imodel=k[2],
                    av_best=grid["av"][k[1]], rv_best=grid["rv"][k[0]],
                    chi2_best=chi2[k[0], k[1], k[2], s],
                    chi2_prior_best=chi2_prior[k[0], k[1], k[2], s],
                    C_best=C[k[0], k[1], k[2], s],
-                   teff=tm, teff_err=ts, logg=gm, logg_err=gs,
+                   teff=tm, teff_err=ts, logg=gm, logg_err=gs, mh=zm, mh_err=zs,
                    av=am, av_err=as_, rv=rm, rv_err=rs)
         for j, b in enumerate(bands):
             row[f"A_{b}"] = Ab[j]
@@ -163,9 +208,24 @@ def _summarize(grid, chi2, chi2_prior, C, bands):
 
 def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
               offsets: dict[str, float] | None = None, law: str = "g23",
-              batch: int = 64, max_stars: int = 0) -> pd.DataFrame:
-    """Fit every XP star; returns the per-star results table."""
-    grid = build_grid(ws, bands, law)
+              batch: int = 0, max_stars: int = 0, spectro_priors: bool = True,
+              rv_fixed: float | None = None) -> pd.DataFrame:
+    """Fit every XP star; returns the per-star results table.
+
+    With spectro_priors and ``teff_spec``/``logg_spec``/``feh_spec`` columns on
+    ``stars`` (DESI MWS, see catalogs.desi) the grid opens to [M/H] -0.5..+0.5
+    and each star with a prior gets spec_prior_chi2 added to its chi2.
+    rv_fixed: restrict the R_V axis to the nearest grid value (column mode: at
+    A_V ~ 0.1 R_V is unconstrained and only adds noise).
+    """
+    use_spec = spectro_priors and all(c in stars.columns for c in SPEC_COLS) \
+        and np.isfinite(stars.teff_spec).any()
+    grid = build_grid(ws, bands, law, mh=MH_SPECTRO if use_spec else MH_DEFAULT)
+    if rv_fixed is not None:
+        r = int(np.argmin(np.abs(grid["rv"] - rv_fixed)))
+        grid = dict(grid, rv=grid["rv"][r:r + 1], ext_xp=grid["ext_xp"][r:r + 1],
+                    A_band=grid["A_band"][r:r + 1])
+    batch = batch or max(8, BATCH_MODELS // len(grid["meta"]))
     offsets = {} if offsets is None else dict(offsets)
     offsets = {b: offsets.get(b, 0.0) for b in bands}
     zp = np.array([filters.get(b).zp_jy for b in bands]) * 1e-23
@@ -175,7 +235,11 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
     err_all = xp["flux_err"].astype(np.float64)
     wave = xp["wave_nm"]
     n = len(g) if not max_stars else min(max_stars, len(g))
-    print(f"fitting {n} stars, {len(grid['meta'])} models, bands {bands}", flush=True)
+    n_spec = int(np.isfinite(g.teff_spec.iloc[:n]).sum()) if use_spec else 0
+    print(f"fitting {n} stars, {len(grid['meta'])} models, bands {bands}"
+          + (f", spectroscopic priors for {n_spec}" if use_spec else "")
+          + (f", R_V fixed at {grid['rv'][0]:.2f}" if rv_fixed is not None else ""), flush=True)
+    mh_lo, mh_hi = grid["meta"][:, 2].min(), grid["meta"][:, 2].max()
     out = []
     t0 = time.time()
     for k0 in range(0, n, batch):
@@ -202,16 +266,25 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
         phot_w[~ok] = 0.0
         chi2, chi2_prior, C = _fit_batch(grid, flux, err, plx_fit, plxe_fit, phot_f, phot_w)
         chi2_prior[..., ~good] = 0.0
+        if use_spec:
+            chi2_spec, has_spec = spec_prior_chi2(grid["meta"], gs)
+            chi2_prior += chi2_spec[None, None, :, :]
+        else:
+            has_spec = np.zeros(len(gs), bool)
         df = _summarize(grid, chi2, chi2_prior, C, bands)
         df.insert(0, "source_id", gs.source_id.values)
         df["n_xp"] = np.isfinite(err).sum(axis=1)
         df["plx_used"] = good
         df["n_phot"] = (phot_w > 0).sum(axis=1)
+        df["spec_prior"] = has_spec
+        if use_spec:
+            z = gs.feh_spec.values.astype(float)
+            df["mh_clamped"] = has_spec & ((z < mh_lo - 1e-6) | (z > mh_hi + 1e-6))
         # observed - synthetic magnitude at the best fit, for the zero-point iteration
         for j, b in enumerate(bands):
             im = df.imodel.values
-            ia = np.rint(df.av_best.values / 0.1).astype(int)
-            ir = np.rint((df.rv_best.values - RV_GRID[0]) / 0.25).astype(int)
+            ia = np.abs(grid["av"][None, :] - df.av_best.values[:, None]).argmin(axis=1)
+            ir = np.abs(grid["rv"][None, :] - df.rv_best.values[:, None]).argmin(axis=1)
             syn = -2.5 * np.log10(grid["fnu0"][im, j]
                                   * 10 ** (-0.4 * grid["A_band"][ir, ia, im, j])
                                   * df.C_best.values / zp[j])
@@ -221,6 +294,8 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
     res = pd.concat(out, ignore_index=True)
     keep = ["source_id", "ra", "dec", "parallax", "parallax_error", "parallax_over_error",
             "ruwe", "ipd_frac_multi_peak", "phot_g_mean_mag", "bp_rp"]
+    if use_spec:
+        keep += [c for c in SPEC_COLS + ("spec_snr",) if c in g.columns]
     res = g[keep].iloc[:n].merge(res, on="source_id")
     res["D_kpc"] = 1.0 / (res.parallax - PLX_ZP)
     res["D_err"] = res.parallax_error / (res.parallax - PLX_ZP) ** 2
@@ -228,10 +303,13 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
 
 
 def measure_offsets(stars_fit: pd.DataFrame, bands: list[str], prev: dict[str, float],
-                    min_bands: int, freeze_nir: bool) -> tuple[dict[str, float], float]:
+                    min_bands: int, freeze_nir: bool,
+                    freeze_all: bool = False) -> tuple[dict[str, float], float]:
     """Cumulative per-band zero-point offsets (observed - synthetic at the fit) from
     well-fit stars; returns (offsets, largest optical move).  NIR bands are frozen
-    after the first pass (freeze_nir=True) - iterating them drifts R_V."""
+    after the first pass (freeze_nir=True) - iterating them drifts R_V.  With
+    freeze_all the offsets are measured (the largest one is returned as the
+    "move") but not applied: prev is returned unchanged."""
     r = stars_fit
     ok = ((r.chi2_best * 3 / r.n_xp < 2.5) & (r.ruwe < 1.4)
           & (r.ipd_frac_multi_peak <= 10) & (r.n_phot >= min_bands))
@@ -245,6 +323,10 @@ def measure_offsets(stars_fit: pd.DataFrame, bands: list[str], prev: dict[str, f
             continue
         med = float(d.median())
         is_nir = any(b.startswith(p) for p in NIR_PREFIXES)
+        if freeze_all:
+            off.setdefault(b, 0.0)
+            max_move = max(max_move, abs(med))
+            continue
         if is_nir and freeze_nir and b in prev:
             continue    # NIR offsets frozen at their first-pass values
         off[b] = round(prev.get(b, 0.0) + med, 4)
@@ -256,20 +338,29 @@ def measure_offsets(stars_fit: pd.DataFrame, bands: list[str], prev: dict[str, f
 def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
                          law: str = "g23", min_bands_offsets: int = 4,
                          max_passes: int = 3, converge: float = 0.02,
-                         force: bool = False) -> pd.DataFrame:
+                         force: bool = False, spectro_priors: bool = True,
+                         freeze_offsets: bool = False,
+                         rv_fixed: float | None = None) -> pd.DataFrame:
     """The fit + zero-point iteration: fit, measure offsets, refit until the
-    optical offsets move < converge mag (NIR frozen after pass 1). Cached."""
+    optical offsets move < converge mag (NIR frozen after pass 1). Cached.
+
+    freeze_offsets: single pass with all zero points held at 0 (the offsets are
+    still measured and written to phot_offsets.json for the record) - the A/B
+    control for low-extinction fields, where a uniform A_V screen and the
+    optical zero points are partly degenerate.
+    """
     out_path = ws.path("xp_stars.csv")
     off_path = ws.path("phot_offsets.json")
     if out_path.exists() and not force:
         return pd.read_csv(out_path)
     offsets: dict[str, float] = {}
     fit = None
-    for p in range(max_passes):
+    for p in range(1 if freeze_offsets else max_passes):
         print(f"--- fit pass {p + 1} (offsets: { {k: v for k, v in offsets.items()} })", flush=True)
-        fit = fit_stars(ws, stars, xp, bands, offsets=offsets, law=law)
+        fit = fit_stars(ws, stars, xp, bands, offsets=offsets, law=law,
+                        spectro_priors=spectro_priors, rv_fixed=rv_fixed)
         offsets, moved = measure_offsets(fit, bands, offsets, min_bands_offsets,
-                                         freeze_nir=(p >= 1))
+                                         freeze_nir=(p >= 1), freeze_all=freeze_offsets)
         json.dump(offsets, open(off_path, "w"), indent=1)
         print(f"    offsets now {offsets} (largest optical move {moved:.3f})", flush=True)
         if p >= 1 and moved < converge:

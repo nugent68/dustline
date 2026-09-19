@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Added
+- **Column mode for high-latitude fields** (`plan.mode == "column"`, |b| > 30°): no
+  measurable law, so G23 at R_V = 3.1 is assumed (`ensemble.default_law`) and the product
+  is the total foreground A_V from the parallax stars behind the dust
+  (`ensemble.foreground_column`: median, bootstrap error, MAD, splits by spectroscopic
+  prior and T_eff, and a cell map of the field). `ExtinctionResult.mode` / `.column`,
+  `column_av.png` (`plotting.plot_column`), CLI `--ref-av` for a reference line.
+  Also fixes the latent crash when `measure_law` found < 10 reddened stars: the run now
+  falls back to the assumed law instead of raising. In column mode the per-star fits hold
+  R_V at the assumed value (`fit_stars(rv_fixed=...)`) — unconstrained at A_V ~ 0.1.
+  The headline column uses the T_eff ≥ 5500 K stars: on COSMOS the K/M dwarfs return a
+  spurious A_V ≈ 0.2 (cool-template / faint-XP systematic).
+- `examples/cosmos/`: the COSMOS column-mode run (0.5°, 592 XP stars, 422 DESI priors):
+  F/G column A_V = 0.086 ± 0.006 vs SFD 0.05; the `--no-spectro` A/B gives 0.170 ± 0.011
+  with twice the scatter. `tests/test_regression_cosmos.py` pins it.
+- **DESI DR1 MWS spectroscopic template priors** (`catalogs/desi.py`, Data Lab
+  `desi_dr1.mws` joined on Gaia `source_id`; `plan.spectro == "desi"` for Dec > −25,
+  |b| > 15): per-star Gaussian priors on (T_eff, log g, [Fe/H]) added to the fit
+  (`fit.spec_prior_chi2`), and the grid's [M/H] axis opened to −0.5/0/+0.5 with the
+  MIST radius prior evaluated per metallicity. New per-star columns `mh`, `mh_err`,
+  `mh_best`, `spec_prior`, `mh_clamped`, `teff_spec` … `spec_snr`. `Sightline(...,
+  spectro_priors=False)` / `--no-spectro` disables them (separate cache key).
+- `Sightline(..., freeze_offsets=True)` / `--freeze-offsets`: single fit pass with the
+  photometric zero points held at 0 (offsets still measured and recorded); the law dict
+  now carries `phot_offsets`, `offsets_frozen`, `n_spec_prior` and the plan's
+  `spectro`/`mode`.
+
+### Changed
+- `SurveyPlan` gained `spectro` and `mode` fields (defaults "none"/"law"; the workspace
+  cache key only changes when they are non-default, so existing law-mode caches are kept).
+- `fit.fit_stars` sizes its batch from the number of grid models (memory-bounded).
+
 - `examples/ob240669/`: the packaged OGLE-2024-BLG-0669 run (A_I(D) table, law JSON,
   the two figures, README with the numbers); `tools/run_ob240669.py` now regenerates it.
   The README quickstart and API docstring use this sightline.
