@@ -2,7 +2,7 @@
 (examples/cosmos), using the cached sightline workspace as the fixture (skipped
 when absent; `dustline run 150.12 2.21 --radius 30` builds it in ~25 min).
 
-Pinned (dustline post-0.2.0, PS1 + 2MASS, 30', DESI DR1 priors, R_V fixed 3.05):
+Pinned (dustline v0.3.0, PS1 + 2MASS, 30', DESI DR1 priors, R_V fixed 3.05):
 - 592 XP stars, 422 with DESI priors; F/G column A_V 0.086 +/- 0.006 (N 150);
   K/M stars 0.20; T_eff(DESI) - T_eff(fit) ~ 25 K.
 """

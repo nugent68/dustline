@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.0 — 2026-09-19
 
 ### Added
 - **Column mode for high-latitude fields** (`plan.mode == "column"`, |b| > 30°): no
@@ -34,6 +34,7 @@
   cache key only changes when they are non-default, so existing law-mode caches are kept).
 - `fit.fit_stars` sizes its batch from the number of grid models (memory-bounded).
 
+### Examples and docs
 - `examples/ob240669/`: the packaged OGLE-2024-BLG-0669 run (A_I(D) table, law JSON,
   the two figures, README with the numbers); `tools/run_ob240669.py` now regenerates it.
   The README quickstart and API docstring use this sightline.
