@@ -1,13 +1,14 @@
-"""Seed the dustline workspace for OGLE-2024-BLG-0669 (RA 275.089125,
-Dec -18.269389) from the research repo's cached Gaia table and calibrated XP
-spectra (skipping the ~2 h archive fetch), then run the v0.2 pipeline:
-PS1 + 2MASS photometry, per-star fits, law, dust run with the red-clump
-bridge, and the two figures.
+"""Regenerate the packaged example, examples/ob240669/ (OGLE-2024-BLG-0669,
+RA 275.089125, Dec -18.269389): seed the workspace from the research repo's
+cached Gaia table and calibrated XP spectra (skipping the ~2 h archive fetch),
+run the pipeline (PS1 + 2MASS photometry, per-star fits, law, dust run with the
+red-clump bridge) and write the A_I(D) table, the law JSON and the two figures.
 
-  .venv/bin/python tools/run_ob240669.py [--max-stars N]
+  .venv/bin/python tools/run_ob240669.py [--max-stars N] [--out examples/ob240669]
 """
 
 import argparse
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--max-stars", type=int, default=0)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--out", default="examples/ob240669", help="output directory")
     a = ap.parse_args()
 
     import dustline
@@ -67,7 +69,12 @@ def main():
             b = " (bridged)" if r.bridged else ""
             print(f"  {r.D_kpc:5.1f} kpc  A_I = {r.A_med:5.2f} [{r.A_16:5.2f}, {r.A_84:5.2f}]"
                   f"  N {int(r.n_stars)}{b}")
-    res.plots(band="I", directory="ob240669_plots")
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    res.save(out / "extinction_I.csv", band="I")
+    json.dump(res.law, open(out / "law.json", "w"), indent=1)
+    print(f"wrote {out / 'extinction_I.csv'}\nwrote {out / 'law.json'}")
+    res.plots(band="I", directory=str(out))
 
 
 if __name__ == "__main__":

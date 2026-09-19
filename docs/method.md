@@ -49,17 +49,21 @@ common J/H/Ks shift is degenerate with the fit and iterating it drifts R_V by
 - The G23 curve family is adequate to < 3 % over 450–950 nm on the validated
   sightlines; the R_V you get is the G23 R_V.
 - The run covers the parallax-supported range (typically ≲ 5–7 kpc at plx
-  S/N > 5 in the plane). No extrapolation is applied beyond the last bin.
+  S/N > 5 in the plane). On bulge sightlines (|l| < 20°, |b| < 10°) it is
+  extended by a linear bridge to the red-clump column at D_RC and held flat
+  behind it (rows flagged `bridged`); elsewhere no extrapolation is applied
+  beyond the last bin.
 - Quality cuts throughout: ruwe < 1.4, ipd_frac_multi_peak ≤ 10, χ²/n < 2.5,
   ≥ 4 photometric bands, A_V < 7.9 (grid edge).
 
 ## Validated against
 
-- OGLE-2017-BLG-0095 (l 357.0, b −3.2): R_V = 3.15, MAD 0.23 (195 stars);
-  A_i = 0.59/1.19/1.33/1.39/1.81 at 0.5–1/1–1.5/1.5–2/2–3/3–5 kpc.
-  The packaged ensemble code reproduces these exactly from the research
-  per-star table (tests/test_regression_ob170095.py).
-- OGLE-2024-BLG-0669 (l 13.2, b −1.6): R_V = 2.73, MAD 0.34 (654 stars).
+- OGLE-2024-BLG-0669 (l 13.2, b −1.6; PS1 + 2MASS, 9′): R_V = 2.88, MAD 0.53
+  (986 stars); red-clump column A_V = 3.28 ± 0.61 at D_RC = 6.1 kpc;
+  A_I = 0.42/0.89/1.09/1.21/1.32 at 1/2/3/4/5 kpc, bridged to 1.92 beyond
+  the clump. The packaged run is in examples/ob240669 and pinned by
+  tests/test_regression_ob240669.py (runs when the sightline workspace is in
+  the local cache).
 
 ## References
 

@@ -28,7 +28,7 @@ automatically from the GitHub release on first use and cached in `~/.cache/dustl
 ```python
 import dustline
 
-sl = dustline.Sightline(ra=267.86642, dec=-33.13517)   # degrees, ICRS
+sl = dustline.Sightline(ra=275.089125, dec=-18.269389)  # degrees, ICRS (OGLE-2024-BLG-0669)
 res = sl.run()          # first run per sightline: ~1-3 h (Gaia XP fetch + fits); cached after
 
 print(res.rv)           # measured R_V: median, scatter (MAD), N stars
@@ -42,7 +42,7 @@ res.plots("I")          # law_rv.png + extinction_run_I.png (needs matplotlib)
 Command line:
 
 ```bash
-dustline run 267.86642 -33.13517 --filter I -o extinction.csv
+dustline run 275.089125 -18.269389 --filter I -o extinction.csv
 dustline run 275.089125 -18.269389 --phot my_calibrated_phot.csv
 dustline run 275.089125 -18.269389 --plots figs/     # also write the two diagnostic figures
 ```
@@ -77,6 +77,15 @@ res = dustline.Sightline(ra, dec, photometry=phot).run()
   A_X vs D coloured by T_eff, the running median with its 16–84 % band, and the dashed
   clump bridge when present).
 
+## Example
+
+[examples/ob240669](examples/ob240669) is a complete run on the OGLE-2024-BLG-0669
+sightline (l 13.2°, b −1.6°; PS1 + 2MASS): R_V = 2.88 ± 0.53 from 986 stars, the A_I(D)
+table bridged to the red-clump column (A_V = 3.28 at 6.1 kpc), the law JSON and the two
+figures.
+
+![extinction run](examples/ob240669/extinction_run_I.png)
+
 ## Caveats
 
 - The first run per sightline fetches XP spectra star-by-star from the Gaia archive
@@ -89,10 +98,10 @@ res = dustline.Sightline(ra, dec, photometry=phot).run()
 
 ## Method / citation
 
-The method was developed for microlensing source-distance work on the sightlines
-OGLE-2017-BLG-0095 (measured R_V = 3.15 ± 0.23) and OGLE-2024-BLG-0669
-(R_V = 2.73 ± 0.34). Paper reference to follow. NewEra models: Hauschildt et al. (2025).
-Extinction curves via `dust_extinction` (G23: Gordon et al. 2023).
+The method was developed for microlensing source-distance work, in particular on the
+OGLE-2024-BLG-0669 sightline (see the example above). Paper reference to follow.
+NewEra models: Hauschildt et al. (2025). Extinction curves via `dust_extinction`
+(G23: Gordon et al. 2023).
 
 ## License
 

@@ -41,7 +41,8 @@ def test_sun_absolute_magnitudes():
 
 
 def test_band_ratios_at_rv315():
-    """Reproduce the published ob170095 law ratios (6000 K source, G23 R_V 3.15)."""
+    """Band ratios relative to DECam i for a 6000 K dwarf under G23 R_V = 3.15
+    (reference values from the research pipeline)."""
     from dustline.ensemble import band_ratio_at_rv
     ref = {"DECam_g": 1.885, "DECam_r": 1.335, "DECam_z": 0.767,
            "VISTA_J": 0.442, "VISTA_Ks": 0.179}

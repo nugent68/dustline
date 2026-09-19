@@ -1,7 +1,7 @@
 """The public API: Sightline and ExtinctionResult.
 
     import dustline
-    res = dustline.Sightline(ra=267.866, dec=-33.135).run()
+    res = dustline.Sightline(ra=275.089125, dec=-18.269389).run()
     res.rv                 # {'median': ..., 'mad': ..., 'n_stars': ...}
     res.extinction("I")    # A_I(D) DataFrame
 """

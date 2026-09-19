@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- `examples/ob240669/`: the packaged OGLE-2024-BLG-0669 run (A_I(D) table, law JSON,
+  the two figures, README with the numbers); `tools/run_ob240669.py` now regenerates it.
+  The README quickstart and API docstring use this sightline.
+- `tests/test_regression_ob240669.py` pins the law, clump anchor and bridged run to the
+  example (runs when the sightline workspace is in the local cache); it replaces
+  `tests/test_regression_ob170095.py`, and the OGLE-2017-BLG-0095 references are gone
+  from the README and method notes.
+- `docs/method.md`: the "no extrapolation beyond the last bin" statement now describes
+  the red-clump bridge on bulge sightlines.
+
 ## v0.2.0 — 2026-09-19
 
 ### Added

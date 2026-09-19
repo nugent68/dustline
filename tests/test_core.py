@@ -65,7 +65,7 @@ def test_band_extinction_ratios_sensible():
 
 
 def test_footprint_bulge():
-    p = footprint.plan(267.86642, -33.13517)       # ob170095: l 357, b -3.2
+    p = footprint.plan(267.86642, -33.13517)       # l 357, b -3.2: DECaPS + VVV bulge field
     assert p.optical == "decaps"
     assert p.nir == "vvv"
     assert p.in_bulge_window
