@@ -25,8 +25,7 @@ import requests
 
 # ---------------------------------------------------------------------------
 # Registry of release assets: name -> (release tag, sha256, size bytes).
-# The sha256 values are filled in when the v0.1.0 release is cut; until then
-# they are None and verification is skipped with a warning.
+# A sha256 of None disables verification for that asset (with a warning).
 # ---------------------------------------------------------------------------
 RELEASE_BASE = "https://github.com/nugent68/dustline/releases/download"
 

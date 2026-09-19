@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dustline"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Measured extinction law (R_V) and 3D dust run A_X(D) along any sightline from Gaia XP spectra x PHOENIX NewEra models plus survey photometry"
 readme = "README.md"
 license = { file = "LICENSE" }
