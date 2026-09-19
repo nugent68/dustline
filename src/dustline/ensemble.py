@@ -89,6 +89,29 @@ def dust_run(fit: pd.DataFrame, min_snr: float = 5.0, min_bands: int = 4) -> pd.
     return df
 
 
+def bridge_to_clump(run: pd.DataFrame, anchor: dict) -> pd.DataFrame:
+    """Extend the A_V(D) run beyond the last parallax bin: linear bridge to the
+    red-clump bulge column at D_RC, held flat behind it (bridged rows flagged,
+    n_stars = 0). When the parallax run already reaches D_RC, the run is
+    extended flat at the clump column (short 0.5 kpc ramp from the last bin).
+    anchor: the dict from clump.find_clump()."""
+    D1 = float(run.D_kpc.iloc[-1])
+    A1, lo1, hi1 = (float(run[c].iloc[-1]) for c in ("AV_med", "AV_16", "AV_84"))
+    Drc, Arc = anchor["D_RC"], anchor["AV_column"]
+    sig = anchor["AV_column_err"]
+    ext = D_FINE[D_FINE > D1]
+    if not len(ext):
+        return run
+    Dj = max(Drc, D1 + 0.5)      # junction: the clump, or a short ramp past the data
+    f = np.clip((ext - D1) / max(Dj - D1, 0.1), 0.0, 1.0)
+    mu = A1 + f * (Arc - A1)
+    lo = lo1 + f * (Arc - sig - lo1)
+    hi = hi1 + f * (Arc + sig - hi1)
+    tail = pd.DataFrame(dict(D_kpc=np.round(ext, 2), AV_med=mu, AV_16=lo, AV_84=hi,
+                             n_stars=0, bridged=True))
+    return pd.concat([run, tail], ignore_index=True)
+
+
 def band_ratio_at_rv(band: str, rv: float, teff: float = 4500.0, logg: float = 2.5,
                      law: str = "g23", av: float = 2.0) -> float:
     """Band-integrated A_band/A_V for a NewEra reference SED under G23(R_V).

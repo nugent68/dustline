@@ -24,3 +24,7 @@ data/
 *.npz
 *.h5
 *.fits
+
+# Run outputs (logs and figure directories from tools/run_*.py)
+*.log
+*_plots/

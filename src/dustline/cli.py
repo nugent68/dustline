@@ -38,6 +38,8 @@ def _cmd_run(a) -> int:
     if a.out:
         res.save(a.out, band=a.filter)
         print(f"wrote {a.out}")
+    if a.plots:
+        res.plots(band=a.filter, directory=a.plots if a.plots != "." else None)
     return 0
 
 
@@ -75,6 +77,8 @@ def main(argv=None) -> int:
     r.add_argument("--simple-surveys", action="store_true",
                    help="use PS1+2MASS even where DECaPS/VVV are available")
     r.add_argument("-o", "--out", default=None, help="write the A(D) table to this csv")
+    r.add_argument("--plots", nargs="?", const=".", default=None,
+                   help="write the R_V and extinction-run figures (optionally to this directory)")
     r.add_argument("--force", action="store_true", help="ignore cached results")
     r.set_defaults(func=_cmd_run)
 

@@ -17,6 +17,7 @@ estimates are combined into the sightline law and a running extinction–distanc
 
 ```bash
 pip install git+https://github.com/nugent68/dustline
+pip install "dustline[plot] @ git+https://github.com/nugent68/dustline"   # + matplotlib for the figures
 ```
 
 Model assets (PHOENIX NewEra spectral cache ~91 MB, MIST v1.2 isochrones) are downloaded
@@ -34,6 +35,8 @@ print(res.rv)           # measured R_V: median, scatter (MAD), N stars
 tab = res.extinction()  # A_I(D): DataFrame with D_kpc, A_med, A_16, A_84, n_stars
 tab = res.extinction("DECam_g")   # any filter with a curve
 print(res.law)          # band ratios A_X/A_I under the measured law
+res.clump_anchor        # red-clump bulge column {AV_column, D_RC, E_JK, ...} or None
+res.plots("I")          # law_rv.png + extinction_run_I.png (needs matplotlib)
 ```
 
 Command line:
@@ -41,6 +44,7 @@ Command line:
 ```bash
 dustline run 267.86642 -33.13517 --filter I -o extinction.csv
 dustline run 275.089125 -18.269389 --phot my_calibrated_phot.csv
+dustline run 275.089125 -18.269389 --plots figs/     # also write the two diagnostic figures
 ```
 
 ### Your own photometry
@@ -58,9 +62,20 @@ res = dustline.Sightline(ra, dec, photometry=phot).run()
 - **R_V** — median and star-to-star scatter of the well-reddened (A_V ≥ 2.5) parallax
   stars, with systematic notes (NIR zero-point sensitivity ±0.05, blue-end XP caveats).
 - **A_X(D)** — running median and 16/84 % envelope of the per-star extinctions of the
-  Gaia-parallax stars in 0.1 kpc steps, for any filter; in bulge sightlines
-  (VVV window) the run is bridged to the red-clump bulge column.
+  Gaia-parallax stars in 0.1 kpc steps, for any filter.
+- **Red-clump bridge** — on bulge/long-bar sightlines (|l| < 20°, |b| < 10°) the red
+  clump is located in the field's (J−Ks, Ks) CMD (2MASS or VVV), its colour excess is
+  turned into an A_V column with the *measured* law ratios, and its distance D_RC comes
+  from the dereddened Ks against the NewEra clump model. The run is then extended past
+  the last parallax bin by a linear bridge to the clump column at D_RC and held flat
+  behind it (rows flagged `bridged`, `n_stars = 0`). The anchor is only accepted when the
+  clump window is well populated, E(J−Ks) > 0.15 and 5 < D_RC < 12 kpc; otherwise the
+  run simply stops at the last parallax bin.
 - **The law** — band-integrated A_X/A_I ratios under the measured R_V for any curve.
+- **Figures** — `res.plots()` / `dustline run ... --plots [dir]` write `law_rv.png`
+  (per-star R_V vs A_V and the R_V histogram) and `extinction_run_<band>.png` (per-star
+  A_X vs D coloured by T_eff, the running median with its 16–84 % band, and the dashed
+  clump bridge when present).
 
 ## Caveats
 

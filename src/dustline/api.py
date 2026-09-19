@@ -32,6 +32,42 @@ class ExtinctionResult:
         self.plan = plan
 
     @property
+    def stars(self) -> pd.DataFrame:
+        """The per-star fit table (lazy-loaded from the workspace)."""
+        return pd.read_csv(self._ws.path("xp_stars.csv"))
+
+    @property
+    def clump_anchor(self) -> dict | None:
+        """The red-clump bulge anchor used for the bridge (None off the bulge)."""
+        return self.law.get("clump_anchor")
+
+    def plots(self, band: str = DEFAULT_FILTER, directory: str | None = None) -> dict:
+        """Write the two diagnostic figures; returns {'law': path, 'run': path}.
+
+        - law: per-star R_V vs A_V (the law sample) + R_V histogram;
+        - run: A_X vs D for the plx S/N > 5 stars coloured by fitted T_eff, the
+          running median with the 16-84 % band, and the dashed red-clump bridge.
+        """
+        from pathlib import Path
+
+        from . import plotting
+
+        d = Path(directory) if directory else self._ws.dir
+        d.mkdir(parents=True, exist_ok=True)
+        fit = self.stars
+        tag = (f"({self._ws.ra:.4f}, {self._ws.dec:.4f})")
+        out = {"law": str(d / "law_rv.png"), "run": str(d / f"extinction_run_{band}.png")}
+        plotting.plot_law(fit, self.law, out["law"],
+                          title=f"{tag}: R$_V$ = {self.law['rv']:.2f} $\\pm$ "
+                                f"{self.law['rv_mad']:.2f} ({self.law['n_stars']} stars)")
+        ratio = (self.law["ratios_av"].get(band)
+                 or ensemble.band_ratio_at_rv(band, self.law["rv"]))
+        plotting.plot_run(fit, self.law, self._run_av, out["run"], band=band, ratio=ratio,
+                          title=f"{tag}: extinction vs distance ({band})")
+        print(f"wrote {out['law']}\nwrote {out['run']}")
+        return out
+
+    @property
     def rv(self) -> dict:
         """Measured R_V: median, star-to-star MAD, weighted mean, N stars."""
         return {k: self.law[k] for k in
@@ -104,9 +140,11 @@ class Sightline:
         for note in self.plan.notes:
             print(f"  - {note}")
 
-        # 1. Gaia cone + XP spectra
+        # 1. Gaia cone + XP spectra (fetch skipped when calibrated spectra exist,
+        #    e.g. a seeded or completed workspace)
         g = gaia.cone(self.ws, force=force)
-        gaia.fetch_xp(self.ws, g, chunk=chunk)
+        if not self.ws.has("xp_sampled.npz") or force:
+            gaia.fetch_xp(self.ws, g, chunk=chunk)
         xp = gaia.calibrate_xp(self.ws, force=force)
 
         # 2. photometry assembly
@@ -125,6 +163,22 @@ class Sightline:
         law["bands"] = band_list
         law["n_fitted"] = int(len(fit))
         law["survey_plan"] = dict(optical=self.plan.optical, nir=self.plan.nir)
+
+        # 5. red-clump bulge bridge (bulge window only)
+        if self.plan.in_bulge_window:
+            from . import clump
+
+            nir_prefix = "VISTA" if self.plan.nir == "vvv" else "2MASS"
+            anchor = clump.find_clump(stars, law, f"{nir_prefix}_J", f"{nir_prefix}_Ks")
+            if anchor:
+                law["clump_anchor"] = anchor
+                run_av = ensemble.bridge_to_clump(run_av, anchor)
+                print(f"red-clump anchor: A_V = {anchor['AV_column']:.2f} +/- "
+                      f"{anchor['AV_column_err']:.2f} at D_RC = {anchor['D_RC']:.1f} kpc "
+                      f"(E(J-Ks) {anchor['E_JK']:.2f}, {anchor['n_window']} stars) - run bridged")
+            else:
+                print("bulge window but no credible red-clump anchor - run stops at "
+                      "the last parallax bin")
 
         json.dump(law, open(result_path, "w"), indent=1)
         run_av.round(4).to_csv(run_path, index=False)

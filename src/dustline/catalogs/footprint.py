@@ -67,5 +67,8 @@ def plan(ra: float, dec: float, prefer_deep: bool = True) -> SurveyPlan:
         nir = "2mass"
         notes.append("2MASS JHKs")
 
-    in_bulge = (abs(lw) < 10.0) and (abs(lat) < 10.0)
+    # red-clump anchor window: the bulge + long bar reach |l| ~ 20 in the plane;
+    # clump.find_clump applies its own credibility gates (window population,
+    # E(J-Ks) > 0.15, D_RC within 5-12 kpc), so a generous window is safe.
+    in_bulge = (abs(lw) < 20.0) and (abs(lat) < 10.0)
     return SurveyPlan(optical=optical, nir=nir, in_bulge_window=in_bulge, notes=notes)
