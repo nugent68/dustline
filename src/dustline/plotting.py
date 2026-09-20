@@ -141,11 +141,11 @@ def plot_column(fit: pd.DataFrame, law: dict, path: str, reference_av: float | N
                zorder=0)
     sc = a.scatter(s.D_kpc[~spec], s.av[~spec], c=s.teff[~spec], s=14, cmap="RdYlBu",
                    vmin=3500, vmax=7500, marker="o", zorder=2,
-                   label=f"XP + photometry only (N = {int((~spec).sum())})")
+                   label=f"free T$_{{eff}}$ (N = {int((~spec).sum())})" if (~spec).any() else None)
     if spec.any():
         a.scatter(s.D_kpc[spec], s.av[spec], c=s.teff[spec], s=26, cmap="RdYlBu",
                   vmin=3500, vmax=7500, marker="s", edgecolors="k", linewidths=0.5, zorder=3,
-                  label=f"with DESI T$_{{eff}}$/log g/[Fe/H] prior (N = {int(spec.sum())})")
+                  label=f"T$_{{eff}}$ locked (BP$-$RP locus / DESI), N = {int(spec.sum())}")
     if col.get("n"):
         d0 = col["d_min_kpc"]
         h = col.get("clean", col)
@@ -159,7 +159,7 @@ def plot_column(fit: pd.DataFrame, law: dict, path: str, reference_av: float | N
         if col.get("teff_cool", {}).get("n"):
             a.axhline(col["teff_cool"]["av"], color="0.4", lw=1, ls="-.", zorder=4,
                       label=f"cool stars (< {col.get('teff_clean', 5500):g} K): "
-                            f"{col['teff_cool']['av']:.3f} (template systematic)")
+                            f"{col['teff_cool']['av']:.3f}")
     if reference_av is not None:
         a.axhline(reference_av, color="tab:red", ls="--", lw=1.5, zorder=4,
                   label=f"reference A$_V$ = {reference_av:.3f}")

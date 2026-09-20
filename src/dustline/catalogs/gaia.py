@@ -52,6 +52,27 @@ _CASE_FIX = [("mag_j", "mag_J"), ("magerr_j", "magerr_J"), ("mag_h", "mag_H"),
              ("magerr_h", "magerr_H"), ("mag_ks", "mag_Ks"), ("magerr_ks", "magerr_Ks")]
 
 
+def by_ids(source_ids, chunk: int = 100) -> pd.DataFrame:
+    """The cone-query columns (incl. the 2MASS join) for an explicit list of Gaia DR3
+    source_ids, fetched in chunks (for calibration samples that are not a cone)."""
+    ids = [int(i) for i in source_ids]
+    frames = []
+    for k in range(0, len(ids), chunk):
+        part = ids[k:k + chunk]
+        adql = _ADQL[:_ADQL.index("WHERE 1=CONTAINS")] + \
+            "WHERE g.source_id IN (" + ",".join(map(str, part)) + ")"
+        q = urllib.parse.urlencode(dict(REQUEST="doQuery", LANG="ADQL", FORMAT="csv", QUERY=adql))
+        req = urllib.request.Request(GAIA_TAP, data=q.encode(), headers=UA)   # POST: long id lists
+        text = urllib.request.urlopen(req, timeout=900).read().decode()
+        head, body = text.split("\n", 1)
+        for lo, hi in _CASE_FIX:
+            head = head.replace(lo, hi)
+        import io
+        frames.append(pd.read_csv(io.StringIO(head + "\n" + body), low_memory=False))
+        print(f"  gaia by_ids: {min(k + chunk, len(ids))}/{len(ids)}", flush=True)
+    return pd.concat(frames, ignore_index=True)
+
+
 def cone(ws: Workspace, force: bool = False) -> pd.DataFrame:
     """Gaia DR3 sources within the workspace radius; cached as gaia.csv."""
     out = ws.path("gaia.csv")

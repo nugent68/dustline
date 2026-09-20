@@ -89,25 +89,21 @@ and star-to-star MAD, the same for the cool stars, the stars with / without a
 spectroscopic prior and per G-magnitude bin, and a coarse map of the column across the
 field (`res.column`, `column_av.png`). Meant for extragalactic fields, as an independent
 check of SFD/Planck-type foregrounds. On the COSMOS test field
-([examples/cosmos](examples/cosmos)) the F/G column is 0.086 ± 0.006 against SFD's 0.05,
-i.e. the method's floor at low A_V is ~0.03–0.04 mag; the K/M dwarfs return a spurious
-0.2 and are excluded from the headline number.
+([examples/cosmos](examples/cosmos)) the F/G column is 0.027 ± 0.005 (MAD 0.050) and the
+K/M dwarfs agree (0.026); SFD gives 0.05–0.06. The absolute zero point carries a ±0.03
+systematic from the template calibration.
 
-**DESI priors.** Where the DESI DR1 Milky Way Survey covers the field (Dec > −25,
-|b| > 15), each Gaia XP star with a DESI spectrum gets its `T_eff`, `log g`, `[Fe/H]`
-(NOIRLab Data Lab `desi_dr1.mws`, joined on Gaia `source_id`) as a Gaussian prior on the
-NewEra template, and the [M/H] axis of the grid opens to −0.5/0/+0.5. At low A_V this
-removes the T_eff–A_V degeneracy that otherwise dominates the per-star error: on COSMOS
-the free fit runs 155 K hot on F/G stars and compensates with +0.08 mag of A_V; the prior
-halves both the bias and the per-star scatter (0.095 → 0.031). Stars with [Fe/H] below
-−0.5 sit at the grid edge and are flagged `mh_clamped`. `--no-spectro`
-turns the priors off (separate cache) for an A/B comparison; `--freeze-offsets` holds the
-photometric zero points at 0 instead of iterating them, the control for the partial
-degeneracy between a uniform A_V screen and the optical zero points.
-
-```bash
-dustline run 150.12 2.21 --radius 30 --ref-av 0.05 --plots cosmos/   # COSMOS, 0.5 deg
-```
+**T_eff lock and template corrections (v0.5.0).** In column mode every dwarf's T_eff is
+locked to the empirical (Mamajek) main-sequence locus of its dereddened Gaia BP−RP, with a
+[Fe/H] term, and the NewEra dwarf templates carry empirical corrections per T_eff node
+built from 2,451 nearby DESI×XP dwarfs (`dustline.calib`; asset
+`template_corrections.npz`). Where the DESI DR1 Milky Way Survey covers the field
+(Dec > −25, |b| > 15) it supplies log g and [Fe/H] (Data Lab `desi_dr1.mws`, joined on
+Gaia `source_id`); its T_eff is *not* used as the prior — it proved unstable at the 100 K
+level, and it was the main cause of a 0.2 mag K-dwarf excess on COSMOS. Stars without a
+DESI [Fe/H] stay on the [M/H] ±0.5 range. `--no-spectro` drops the DESI priors;
+`DUSTLINE_TEMPLATE_CORR=none` drops the corrections; `--freeze-offsets` holds the
+photometric zero points at 0 (the control for the screen / zero-point degeneracy).
 
 **GALEX and WISE.** Off the plane (|b| > 20° for GALEX AIS, > 10° for AllWISE) the fit
 also takes GALEX FUV/NUV (GUVcat_AIS) and AllWISE W1/W2. The UV is the extinction lever
@@ -134,8 +130,8 @@ start to pay at A_V ≳ 0.3, where the UV signal (≈ 0.9 mag) dwarfs the model 
 ## Example
 
 [examples/ob240669](examples/ob240669) is a complete run on the OGLE-2024-BLG-0669
-sightline (l 13.2°, b −1.6°; PS1 + 2MASS): R_V = 2.84 ± 0.48 from 946 stars, the A_I(D)
-table bridged to the red-clump column (A_V = 3.33 at 6.1 kpc), the law JSON and the two
+sightline (l 13.2°, b −1.6°; PS1 + 2MASS): R_V = 2.80 ± 0.46 from 895 stars, the A_I(D)
+table bridged to the red-clump column (A_V = 3.27 at 6.2 kpc), the law JSON and the two
 figures. [examples/cosmos](examples/cosmos) is the high-latitude column-mode run.
 
 ![extinction run](examples/ob240669/extinction_run_I.png)

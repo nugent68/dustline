@@ -49,6 +49,12 @@ ASSETS: dict[str, dict] = {
         tag="v0.4.0",
         sha256="2e03d4f0c101e848faf9738132ea8db3af2f0d05afbf81dff1e2c38f2c6c8918",
         size=214_319_883),
+    # Empirical dwarf-template corrections per DESI T_eff / [Fe/H] bin from 2,451
+    # unreddened DESI x XP dwarfs (dustline.calib; tools/build_template_corrections.py).
+    "template_corrections.npz": dict(
+        tag="v0.5.0",
+        sha256="b7956d09e743edad0e68ebb91b1bd8ad926eb94eaa17c80db31faa29968a071f",
+        size=120060),
 }
 
 

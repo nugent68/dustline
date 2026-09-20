@@ -30,10 +30,14 @@ import time
 import numpy as np
 import pandas as pd
 
-from . import extinction, filters, models
+from . import calib, extinction, filters, models
 from .cache import Workspace
 
-AV_GRID = np.arange(0.0, 8.01, 0.1)
+AV_GRID = np.round(np.concatenate([np.arange(-0.1, 0.5, 0.01), np.arange(0.5, 8.01, 0.1)]), 3)
+# 0.01 steps below 0.5 (column mode: a 0.1 grid quantises the posterior once T_eff is locked);
+# the grid reaches -0.1 so that the posterior mean of an unreddened star is unbiased (a
+# grid starting at 0 pushes every near-zero star to +0.01..0.02 and a field median can
+# never fall below 0)
 RV_GRID = np.arange(2.3, 5.56, 0.25)
 XP_FLOOR = 0.02            # fractional flux systematic per XP sample
 XP_PEAK_FLOOR = 0.005      # fraction of the spectrum peak
@@ -66,20 +70,27 @@ def _phot_sys(band: str) -> float:
 
 
 def build_grid(ws: Workspace, bands: list[str], law: str = "g23",
-               mh: tuple[float, ...] = MH_DEFAULT) -> dict:
+               mh: tuple[float, ...] = MH_DEFAULT, corrections="default") -> dict:
     """Model products on the fit sub-grid: XP-resolution spectra, band f_nu,
     per-(R_V, A_V) band extinctions, the radius prior.  Cached in the shared
     asset cache keyed by the band list + law (+ the [M/H] axis when it is not
-    the solar default), reused across sightlines."""
+    the solar default, the model cache and the template corrections), reused
+    across sightlines.
+
+    corrections: "default" applies the empirical dwarf-template corrections
+    (dustline.calib; $DUSTLINE_TEMPLATE_CORR overrides, "none" disables), None
+    applies none (used when building the corrections themselves)."""
     from . import assets
 
+    corr = calib.load() if corrections == "default" else corrections
     wave, flux, meta = models.load_cache()
     if mh is None:
         mh = tuple(sorted(set(meta[:, 2].tolist())))
     mh = tuple(float(m) for m in mh)
     tag = "" if mh == MH_DEFAULT else "mh" + ",".join(f"{m:+.1f}" for m in mh)
     ctag = "" if models.cache_name() == "newera_full_cache.npz" else models.cache_tag()
-    key = hashlib.sha256(("|".join(bands) + law + tag + ctag).encode()).hexdigest()[:10]
+    atag = "" if AV_GRID[0] == 0.0 and len(AV_GRID) == 81 else f"av{AV_GRID[0]:+.2f}:{len(AV_GRID)}"
+    key = hashlib.sha256(("|".join(bands) + law + tag + ctag + calib.tag(corr) + atag).encode()).hexdigest()[:10]
     path = assets.cache_dir() / f"xp_grid_{law}_{key}.npz"
     if path.exists():
         d = np.load(path, allow_pickle=False)
@@ -97,6 +108,11 @@ def build_grid(ws: Workspace, bands: list[str], law: str = "g23",
     ext_full = np.stack([extinction.curve(wave, rv, law) for rv in RV_GRID])
     fl = flux * 100.0 * models.RD2                         # erg/s/cm2/A at C=1
     fnu0 = np.stack([ph.fnu(fl)[b] for b in bands], axis=1)
+    corrected = np.zeros(len(meta), bool)
+    if corr is not None:
+        m_xp, fnu0, corrected = calib.apply(corr, meta, m_xp, xp_wave, fnu0, bands)
+        print(f"  grid: empirical template corrections applied to {corrected.sum()} dwarf models",
+              flush=True)
     A_band = np.zeros((len(RV_GRID), len(AV_GRID), len(meta), len(bands)), np.float32)
     for r, rv in enumerate(RV_GRID):
         for a, av in enumerate(AV_GRID):
@@ -115,7 +131,7 @@ def build_grid(ws: Workspace, bands: list[str], law: str = "g23",
     out = dict(meta=meta, xp_wave=xp_wave, m_xp=m_xp.astype(np.float32),
                ext_xp=ext_xp.astype(np.float32), fnu0=fnu0.astype(np.float64),
                A_band=A_band, rprior=rprior, av=AV_GRID, rv=RV_GRID,
-               bands=np.array(bands))
+               bands=np.array(bands), corrected=corrected)
     np.savez_compressed(path, **out)
     out["bands"] = bands
     print(f"grid: {len(meta)} models x {len(AV_GRID)} A_V x {len(RV_GRID)} R_V "
@@ -166,16 +182,16 @@ def spec_prior_chi2(meta: np.ndarray, spec: pd.DataFrame) -> tuple[np.ndarray, n
     t, te = spec.teff_spec.values.astype(float), spec.teff_spec_err.values.astype(float)
     g, ge = spec.logg_spec.values.astype(float), spec.logg_spec_err.values.astype(float)
     z, ze = spec.feh_spec.values.astype(float), spec.feh_spec_err.values.astype(float)
-    has = np.isfinite(t) & np.isfinite(g) & np.isfinite(z)
+    has = np.isfinite(t)                      # a T_eff prior is required; log g / [M/H] optional
     if not has.any():
         return out, has
-    te = np.maximum(np.nan_to_num(te, nan=100.0), 30.0)
+    te = np.maximum(np.nan_to_num(te, nan=100.0), 1.0)
     ge = np.maximum(np.nan_to_num(ge, nan=0.3), 0.05)
     ze = np.maximum(np.nan_to_num(ze, nan=0.3), 0.05)
-    zc = np.clip(z, meta[:, 2].min(), meta[:, 2].max())
-    chi = (((meta[:, 0][:, None] - t[None, :]) / te[None, :]) ** 2
-           + ((meta[:, 1][:, None] - g[None, :]) / ge[None, :]) ** 2
-           + ((meta[:, 2][:, None] - zc[None, :]) / ze[None, :]) ** 2)
+    zc = np.clip(np.nan_to_num(z, nan=0.0), meta[:, 2].min(), meta[:, 2].max())
+    chi = ((meta[:, 0][:, None] - t[None, :]) / te[None, :]) ** 2
+    chi += np.where(np.isfinite(g)[None, :], ((meta[:, 1][:, None] - np.nan_to_num(g)[None, :]) / ge[None, :]) ** 2, 0.0)
+    chi += np.where(np.isfinite(z)[None, :], ((meta[:, 2][:, None] - zc[None, :]) / ze[None, :]) ** 2, 0.0)
     out[:, has] = chi[:, has]
     return out, has
 
@@ -225,7 +241,8 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
               offsets: dict[str, float] | None = None, law: str = "g23",
               batch: int = 0, max_stars: int = 0, spectro_priors: bool = True,
               rv_fixed: float | None = None,
-              star_offsets: pd.DataFrame | None = None) -> pd.DataFrame:
+              star_offsets: pd.DataFrame | None = None, av_fixed: float | None = None,
+              corrections="default") -> pd.DataFrame:
     """Fit every XP star; returns the per-star results table.
 
     With spectro_priors and ``teff_spec``/``logg_spec``/``feh_spec`` columns on
@@ -235,14 +252,20 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
     A_V ~ 0.1 R_V is unconstrained and only adds noise).
     star_offsets: per-star zero-point offsets (source_id + off_<band> columns,
     the T_eff-binned UV offsets) applied on top of the global ``offsets``.
+    av_fixed: hold A_V at the nearest grid value (calibration fits at A_V = 0).
+    corrections: see build_grid.
     """
     use_spec = spectro_priors and all(c in stars.columns for c in SPEC_COLS) \
         and np.isfinite(stars.teff_spec).any()
-    grid = build_grid(ws, bands, law, mh=MH_SPECTRO if use_spec else MH_DEFAULT)
+    grid = build_grid(ws, bands, law, mh=MH_SPECTRO if use_spec else MH_DEFAULT,
+                      corrections=corrections)
     if rv_fixed is not None:
         r = int(np.argmin(np.abs(grid["rv"] - rv_fixed)))
         grid = dict(grid, rv=grid["rv"][r:r + 1], ext_xp=grid["ext_xp"][r:r + 1],
                     A_band=grid["A_band"][r:r + 1])
+    if av_fixed is not None:
+        a = int(np.argmin(np.abs(grid["av"] - av_fixed)))
+        grid = dict(grid, av=grid["av"][a:a + 1], A_band=grid["A_band"][:, a:a + 1])
     batch = batch or max(8, BATCH_MODELS // len(grid["meta"]))
     offsets = {} if offsets is None else dict(offsets)
     offsets = {b: offsets.get(b, 0.0) for b in bands}
@@ -261,7 +284,10 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
     n_spec = int(np.isfinite(g.teff_spec.iloc[:n]).sum()) if use_spec else 0
     print(f"fitting {n} stars, {len(grid['meta'])} models, bands {bands}"
           + (f", spectroscopic priors for {n_spec}" if use_spec else "")
-          + (f", R_V fixed at {grid['rv'][0]:.2f}" if rv_fixed is not None else ""), flush=True)
+          + (f", R_V fixed at {grid['rv'][0]:.2f}" if rv_fixed is not None else "")
+          + (f", A_V fixed at {grid['av'][0]:.2f}" if av_fixed is not None else "")
+          + (f", {int(grid['corrected'].sum())} corrected templates" if "corrected" in grid
+             and grid["corrected"].any() else ""), flush=True)
     mh_lo, mh_hi = grid["meta"][:, 2].min(), grid["meta"][:, 2].max()
     out = []
     t0 = time.time()
@@ -291,9 +317,10 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
         chi2_prior[..., ~good] = 0.0
         if use_spec:
             chi2_spec, has_spec = spec_prior_chi2(grid["meta"], gs)
-            # no prior: keep the star on the solar-ish [M/H] range
+            # no [M/H] prior: keep the star on the solar-ish [M/H] range
+            has_feh = np.isfinite(gs.feh_spec.values.astype(float))
             outside = (grid["meta"][:, 2] < MH_FREE_RANGE[0]) | (grid["meta"][:, 2] > MH_FREE_RANGE[1])
-            chi2_spec[np.ix_(outside, ~has_spec)] = MH_PENALTY
+            chi2_spec[np.ix_(outside, ~has_feh)] = MH_PENALTY
             chi2_prior += chi2_spec[None, None, :, :]
         else:
             has_spec = np.zeros(len(gs), bool)
@@ -404,7 +431,8 @@ def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str
                          max_passes: int = 3, converge: float = 0.02,
                          force: bool = False, spectro_priors: bool = True,
                          freeze_offsets: bool = False,
-                         rv_fixed: float | None = None) -> pd.DataFrame:
+                         rv_fixed: float | None = None,
+                         teff_from_colour: bool = False) -> pd.DataFrame:
     """The fit + zero-point iteration: fit, measure offsets, refit until the
     optical offsets move < converge mag (NIR frozen after pass 1). Cached.
 
@@ -412,6 +440,10 @@ def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str
     still measured and written to phot_offsets.json for the record) - the A/B
     control for low-extinction fields, where a uniform A_V screen and the
     optical zero points are partly degenerate.
+    teff_from_colour (column mode): every star's T_eff prior is the empirical
+    dwarf T_eff of its Gaia BP-RP (calib.teff_from_bprp), dereddened by the
+    previous pass's A_V (0 in pass 1; converges in two passes at A_V ~ 0.05),
+    locked like the DESI label would be; DESI still supplies log g / [Fe/H].
     """
     out_path = ws.path("xp_stars.csv")
     off_path = ws.path("phot_offsets.json")
@@ -422,7 +454,24 @@ def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str
     star_off = None
     has_uv = any(b.startswith(UV_PREFIXES) for b in bands)
     fit = None
-    for p in range(1 if freeze_offsets else max_passes + (1 if has_uv else 0)):
+    if teff_from_colour:
+        stars = stars.copy()
+        for c in SPEC_COLS:
+            if c not in stars:
+                stars[c] = np.nan
+        stars["teff_desi"] = stars["teff_spec"]
+    n_pass = 1 if freeze_offsets else max_passes + (1 if has_uv else 0)
+    for p in range(max(n_pass, 2 if teff_from_colour else 1)):
+        if teff_from_colour:
+            av_prev = (fit.set_index("source_id").av.reindex(stars.source_id).fillna(0.0).values
+                       if fit is not None else np.zeros(len(stars)))
+            feh = stars.feh_spec.values.astype(float)
+            feh = np.where(np.isfinite(feh), feh, np.nanmedian(feh) if np.isfinite(feh).any() else 0.0)
+            t_col = calib.teff_from_bprp(stars.bp_rp.values, av_prev, feh)
+            stars["teff_spec"] = t_col
+            stars["teff_spec_err"] = calib.TEFF_PRIOR_SIGMA
+            print(f"    T_eff prior from BP-RP (dereddened by pass-{p} A_V) for "
+                  f"{int(np.isfinite(t_col).sum())} stars", flush=True)
         print(f"--- fit pass {p + 1} (offsets: { {k: v for k, v in offsets.items()} }"
               + (f"; UV bins {uv_table}" if uv_table else "") + ")", flush=True)
         fit = fit_stars(ws, stars, xp, bands, offsets=offsets, law=law,
@@ -439,6 +488,8 @@ def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str
             break
     if star_off is not None:
         fit = fit.merge(star_off, on="source_id", how="left")
+    if teff_from_colour:
+        fit = fit.merge(stars[["source_id", "teff_desi"]], on="source_id", how="left")
     fit.round(5).to_csv(out_path, index=False)
     print(f"wrote {out_path}: {len(fit)} stars", flush=True)
     return fit

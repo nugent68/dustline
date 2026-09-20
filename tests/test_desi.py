@@ -31,7 +31,7 @@ def test_desi_shape_dedups_and_floors():
     out = desi.shape(raw)
     assert list(out.source_id) == [1, 2]               # dup -> highest S/N; NaN teff / id dropped
     assert out.teff_spec.iloc[0] == 5100.0
-    assert out.teff_spec_err.iloc[0] == pytest.approx(np.hypot(10.0, desi.TEFF_SYS))
+    assert out.teff_spec_err.iloc[0] == pytest.approx(desi.TEFF_SYS)
     assert out.feh_spec_err.iloc[1] == pytest.approx(np.hypot(0.05, desi.FEH_SYS))
 
 

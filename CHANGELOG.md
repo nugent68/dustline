@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.5.0 — 2026-09-20
+
+### Added
+- **Empirical dwarf-template corrections** (`dustline.calib`, asset
+  `template_corrections.npz`, `tools/build_template_corrections.py`): per T_eff grid node
+  and [Fe/H] bin, the XP obs/model ratio spectrum and per-band offsets of 2,451 nearby
+  DESI×XP dwarfs, dereddened star by star with the Edenhofer+2023 3D map (`dustmaps`,
+  optional dependency, only for building) and fitted at A_V = 0 with T_eff locked;
+  multiplied into the dwarf models (log g ≥ 3.5) of the fit grid.
+- **T_eff lock on the empirical colour scale** (column mode): each star's T_eff prior is
+  the Mamajek-locus T_eff of its dereddened Gaia BP−RP with a [Fe/H] term
+  (`calib.teff_from_bprp`, packaged `data/mamajek_dwarf_locus.dat`), locked to the
+  nearest grid node; DESI supplies log g/[Fe/H]. The DESI T_eff label proved unstable at
+  the 100 K level (S/N- and brightness-dependent) and is no longer used as the T_eff prior.
+  `spec_prior_chi2` now takes T_eff-only priors (log g / [M/H] terms optional).
+- A_V grid in 0.01 steps below 0.5 and extended to −0.1 (unbiased near zero).
+- `fit.fit_stars(av_fixed=...)`, `gaia.by_ids`, `ps1.by_positions`,
+  `datalab/vizier.positions_query`, `calib.map_extinction/deredden`.
+
+### Fixed
+- PS1 mean-PSF magnitudes brighter than the saturation limits (g 14.5, r 15, i 15, z 14,
+  y 13) are dropped (`ps1.SATURATION`), also when reading cached tables.
+- The fit-grid cache key now includes the A_V axis.
+
+### Result
+- COSMOS F/G column 0.027 ± 0.005 (MAD 0.050; was 0.072 ± 0.009, MAD 0.065); K/M stars
+  0.026 (was 0.185): the K/M-dwarf systematic is resolved — it was the DESI T_eff label
+  plus NewEra's too-blue K-dwarf SEDs, not dust or XP. Zero point ±0.03 systematic
+  (SFD 0.059). Bulge unchanged (R_V 2.80 ± 0.46, clump 3.27).
+
 ## v0.4.0 — 2026-09-19
 
 ### Added

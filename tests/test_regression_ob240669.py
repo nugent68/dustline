@@ -4,11 +4,12 @@ table (with its 2MASS join) of the cached sightline workspace as fixtures
 (skipped when that workspace is not in the local cache; tools/run_ob240669.py
 builds it).
 
-Pinned (dustline v0.4.0: UV-IR model cache, tiled PS1 fetch, 2MASS, 9'):
-- law: R_V = 2.84 (median), MAD 0.48 (946 stars with A_V >= 2);
-- clump: E(J-Ks) 0.52, A_V column 3.33 +/- 0.62 at D_RC 6.1 kpc;
-- run: A_I 0.41 / 0.84 / 1.00 / 1.17 / 1.31 at 1 / 2 / 3 / 4 / 5 kpc, bridged to
-  1.94 beyond the clump (A_I/A_V = 0.583).
+Pinned (dustline v0.5.0: UV-IR model cache with the empirical dwarf-template
+corrections, tiled PS1 fetch with saturation cut, 2MASS, 9'):
+- law: R_V = 2.80 (median), MAD 0.46 (895 stars with A_V >= 2);
+- clump: E(J-Ks) 0.52, A_V column 3.27 +/- 0.61 at D_RC 6.2 kpc;
+- run: A_I 0.35 / 0.82 / 0.99 / 1.16 / 1.26 at 1 / 2 / 3 / 4 / 5 kpc, bridged to
+  1.90 beyond the clump (A_I/A_V = 0.579).
 
 The corresponding figures are in tests/figures/ob240669/ (law_rv.png,
 extinction_run_I.png) for visual comparison when the numbers drift.
@@ -25,8 +26,12 @@ BANDS = ["2MASS_H", "2MASS_J", "2MASS_Ks", "PS1_g", "PS1_i", "PS1_r", "PS1_y", "
 
 
 def _workspace():
+    from dustline import calib
+    tag = calib.tag(calib.load())
+    if not tag:
+        return None
     ws = Workspace(RA, DEC, RADIUS, dict(optical="ps1", nir="2mass", user_phot=None,
-                                         model_cache="uvir_cache"))
+                                         model_cache="uvir_cache", template_corr=tag))
     return ws if ws.has("xp_stars.csv") and ws.has("gaia.csv") else None
 
 
@@ -59,17 +64,17 @@ def anchor(field, law):
 
 
 def test_law_rv_regression(law):
-    assert law["n_stars"] == pytest.approx(946, abs=20)
-    assert law["rv"] == pytest.approx(2.84, abs=0.05)
-    assert law["rv_mad"] == pytest.approx(0.48, abs=0.05)
-    assert law["ratios_av"]["PS1_i"] == pytest.approx(0.628, abs=0.02)
+    assert law["n_stars"] == pytest.approx(895, abs=20)
+    assert law["rv"] == pytest.approx(2.80, abs=0.05)
+    assert law["rv_mad"] == pytest.approx(0.46, abs=0.05)
+    assert law["ratios_av"]["PS1_i"] == pytest.approx(0.622, abs=0.02)
     assert law["ratios_av"]["2MASS_Ks"] == pytest.approx(0.096, abs=0.01)
 
 
 def test_clump_anchor_regression(anchor):
     assert anchor is not None
     assert anchor["E_JK"] == pytest.approx(0.52, abs=0.03)
-    assert anchor["AV_column"] == pytest.approx(3.33, abs=0.15)
+    assert anchor["AV_column"] == pytest.approx(3.27, abs=0.15)
     assert anchor["D_RC"] == pytest.approx(6.1, abs=0.3)
 
 
@@ -77,8 +82,8 @@ def test_dust_run_regression(fit, law, anchor):
     from dustline.ensemble import band_ratio_at_rv, bridge_to_clump, dust_run
     run = bridge_to_clump(dust_run(fit), anchor)
     ratio = band_ratio_at_rv("I", law["rv"])
-    assert ratio == pytest.approx(0.583, abs=0.01)
-    ref = {1.0: 0.41, 2.0: 0.84, 3.0: 1.00, 4.0: 1.17, 5.0: 1.31, 8.0: 1.94, 12.0: 1.94}
+    assert ratio == pytest.approx(0.579, abs=0.01)
+    ref = {1.0: 0.35, 2.0: 0.82, 3.0: 0.99, 4.0: 1.16, 5.0: 1.26, 8.0: 1.90, 12.0: 1.90}
     for D, expected in ref.items():
         r = run[np.isclose(run.D_kpc, D)].iloc[0]
         assert r.AV_med * ratio == pytest.approx(expected, abs=0.03), D

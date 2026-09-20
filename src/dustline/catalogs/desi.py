@@ -22,7 +22,7 @@ import pandas as pd
 from ..cache import Workspace
 from .datalab import box_query
 
-TEFF_SYS = 50.0      # K, added in quadrature to the formal error
+TEFF_SYS = 1.0       # K: T_eff is LOCKED to the DESI label (grid point); see calib.TEFF_PRIOR_SIGMA
 LOGG_SYS = 0.10      # dex
 FEH_SYS = 0.10       # dex
 _COLS = ["source_id", "target_ra", "target_dec", "teff", "teff_err", "logg", "logg_err",
@@ -38,7 +38,7 @@ def shape(d: pd.DataFrame) -> pd.DataFrame:
     res = pd.DataFrame(dict(
         source_id=d.source_id.values,
         teff_spec=d.teff.values,
-        teff_spec_err=np.sqrt(d.teff_err.values ** 2 + TEFF_SYS ** 2),
+        teff_spec_err=np.full(len(d), TEFF_SYS),
         logg_spec=d.logg.values,
         logg_spec_err=np.sqrt(d.logg_err.values ** 2 + LOGG_SYS ** 2),
         feh_spec=d.feh.values,

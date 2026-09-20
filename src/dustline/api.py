@@ -172,6 +172,7 @@ class Sightline:
             config["spectro"] = self.plan.spectro
         if self.plan.mode != "law":
             config["mode"] = self.plan.mode
+            config["teff_lock"] = "colour"      # v0.5: T_eff locked to the BP-RP locus
         if self.freeze_offsets:
             config["freeze_offsets"] = True
         if self.plan.uv != "none":
@@ -180,6 +181,9 @@ class Sightline:
             config["mir"] = self.plan.mir
         if models.cache_name() != "newera_full_cache.npz":
             config["model_cache"] = models.cache_tag()
+        from . import calib
+        if calib.tag(calib.load()):
+            config["template_corr"] = calib.tag(calib.load())
         self.ws = Workspace(self.ra, self.dec, self.radius_arcmin, config)
 
     def run(self, force: bool = False, chunk: int = 200) -> ExtinctionResult:
@@ -221,8 +225,10 @@ class Sightline:
         #    (column mode: R_V held at the assumed value - unconstrained at A_V ~ 0.1)
         fit = fit_mod.run_fit_with_offsets(
             self.ws, stars, xp, band_list, force=force,
-            spectro_priors=(self.plan.spectro != "none"), freeze_offsets=self.freeze_offsets,
-            rv_fixed=ensemble.RV_ASSUMED if self.plan.mode == "column" else None)
+            spectro_priors=(self.plan.spectro != "none") or self.plan.mode == "column",
+            freeze_offsets=self.freeze_offsets,
+            rv_fixed=ensemble.RV_ASSUMED if self.plan.mode == "column" else None,
+            teff_from_colour=(self.plan.mode == "column"))
 
         # 4. ensemble products: the measured law, or the assumed one where there
         #    is no reddening to measure it (column mode / too few A_V >= 2 stars)
@@ -241,8 +247,9 @@ class Sightline:
         law["survey_plan"] = dict(optical=self.plan.optical, nir=self.plan.nir,
                                   spectro=self.plan.spectro, mode=self.plan.mode,
                                   uv=self.plan.uv, mir=self.plan.mir)
-        from . import models
+        from . import calib, models
         law["model_cache"] = models.cache_name()
+        law["template_corrections"] = calib.tag(calib.load()) or None
         sfd = self.ws.path("galex_sfd.json")
         if sfd.exists():
             law["sfd_ebv"] = json.loads(sfd.read_text())["sfd_ebv"]

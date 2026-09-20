@@ -60,6 +60,56 @@ common J/H/Ks shift is degenerate with the fit and iterating it drifts R_V by
 - Quality cuts throughout: ruwe < 1.4, ipd_frac_multi_peak ≤ 10, χ²/n < 2.5,
   ≥ 4 photometric bands, A_V < 7.9 (grid edge).
 
+## Empirical template corrections and the T_eff lock (v0.5.0)
+
+The K-dwarf systematic of the COSMOS test (A_V ≈ 0.2 for T_eff < 5000 K against a
+0.06 foreground) decomposed into three pieces, none of them dust or XP
+calibration (the XP-independent colour excesses E(g−Ks), E(g−W1), E(g−z) show
+the same 0.16–0.28 mag):
+1. The DESI RVSpecFit T_eff label is not a stable coordinate at the 100 K level:
+   it is 50–120 K too hot against the empirical (IRFM) Mamajek BP−RP locus, the
+   offset depends on S/N and brightness, and calibrators of one DESI label
+   differ by 0.1 mag in BP−RP between G 12 and G 14.
+2. NewEra's dwarf SEDs at a given T_eff are too blue: 18 % too bright at 400 nm
+   at 4000–4500 K, 7–11 % at 4500–5250 K, 2–6 % at 5250–6000 K.
+3. A soft T_eff prior (σ 50–100 K) cannot hold either: with A_V free the fit
+   keeps the label and pays with A_V (~0.05 per 100 K); with A_V held at 0 it
+   drifts 150–200 K cooler instead — so corrections measured one way did not
+   transfer to the other.
+
+The design that closes (`dustline.calib`, `tools/build_template_corrections.py`):
+- **T_eff lock**: every dwarf's T_eff is the empirical Mamajek locus value of its
+  dereddened Gaia BP−RP (`calib.teff_from_bprp`, packaged locus, a NewEra-based
+  [Fe/H] term of 0.03–0.06 mag/dex — metal-poor stars read 150–200 K too hot
+  otherwise), locked (σ = 1 K) to the nearest 100 K grid node. In column mode
+  the dereddening uses the previous pass's A_V (0 in pass 1; converges in two
+  passes at A_V ~ 0.05); DESI supplies log g and [Fe/H] (field median when a
+  star has none). Stars without a BP−RP T_eff keep the old behaviour.
+- **Calibrators**: 2,451 DESI DR1 dwarfs (log g > 4, S/N > 20) within 250 pc at
+  |b| > 40° with XP, PS1, 2MASS, AllWISE, GALEX. They are *not* dust-free (a
+  100–250 pc star at |b| > 40° sits at z = 80–190 pc, behind most of a
+  ~100 pc dust layer): each is dereddened with the Edenhofer+2023 3D map
+  (median A_V 0.026, A_V = 2.8 E) before an A_V = 0 fit at its locked node.
+- **Corrections**: per grid node and [Fe/H] bin, the median XP obs/model ratio
+  spectrum (smoothed, not renormalised) and per-band offsets, multiplied into
+  the dwarf models (log g ≥ 3.5) of the fit grid (`template_corrections.npz`).
+  Giants are untouched.
+- **A_V grid**: 0.01 steps below 0.5 and down to −0.1, because with the lock a
+  0.1 grid quantises the posterior and a grid starting at 0 biases every
+  near-zero star positive.
+
+Closure on the calibrators (corrected templates, A_V free): dereddened G/F
+stars 0.00, K stars 0.02–0.04; their own map extinction is recovered to 0.01.
+COSMOS: F/G column 0.027 ± 0.005 (MAD 0.050, from 0.072/0.065), K/M stars
+0.026 (from 0.185), G-magnitude trend 0.01/0.03/0.03/0.05 (from
+0.02/0.06/0.10/0.20); the lock alone without corrections gives 0.039 (F/G) and
+0.069 (K/M). SFD 0.059: the absolute zero point carries a ±0.03 systematic
+(calibrators are bright, solar-metallicity, 100–250 pc stars dereddened with
+the 3D map at A_V = 2.8 E; XP is ~0.03 mag too red in g−z against PS1 for faint
+red stars). PS1 mean-PSF magnitudes brighter than g 14.5 / r 15 / i 15 / z 14 /
+y 13 are saturated and now dropped everywhere. The bulge field is unaffected
+(R_V 2.80 ± 0.46 vs 2.84 ± 0.48). `DUSTLINE_TEMPLATE_CORR=none` disables.
+
 ## Column mode (|b| > 30°)
 
 No A_V ≥ 2 stars, so R_V is not measurable: G23 at R_V = 3.1 is assumed (and
@@ -93,14 +143,15 @@ of the field. What the COSMOS test (examples/cosmos, SFD A_V ≈ 0.05) showed:
 
 ## Validated against
 
-- OGLE-2024-BLG-0669 (l 13.2, b −1.6; PS1 + 2MASS, 9′): R_V = 2.84, MAD 0.48
-  (946 stars); red-clump column A_V = 3.33 ± 0.62 at D_RC = 6.1 kpc;
-  A_I = 0.41/0.84/1.00/1.17/1.31 at 1/2/3/4/5 kpc, bridged to 1.94 beyond
-  the clump (v0.4.0 cache; the 2500–25000 Å cache gave 2.88 ± 0.53). The packaged run is in examples/ob240669 and pinned by
+- OGLE-2024-BLG-0669 (l 13.2, b −1.6; PS1 + 2MASS, 9′): R_V = 2.80, MAD 0.46
+  (895 stars); red-clump column A_V = 3.27 ± 0.61 at D_RC = 6.2 kpc;
+  A_I = 0.35/0.82/0.99/1.16/1.26 at 1/2/3/4/5 kpc, bridged to 1.90 beyond
+  the clump (v0.5.0; v0.4.0 gave 2.84 ± 0.48, the 2500–25000 Å cache 2.88 ± 0.53). The packaged run is in examples/ob240669 and pinned by
   tests/test_regression_ob240669.py (runs when the sightline workspace is in
   the local cache).
-- COSMOS (l 237, b +42; column mode, 30′): F/G foreground column A_V = 0.072 ±
-  0.009 vs SFD 0.059 (examples/cosmos, tests/test_regression_cosmos.py).
+- COSMOS (l 237, b +42; column mode, 30′): F/G foreground column A_V = 0.027 ±
+  0.005 (K/M 0.026) vs SFD 0.059, ±0.03 systematic (examples/cosmos,
+  tests/test_regression_cosmos.py).
 
 ## References
 
