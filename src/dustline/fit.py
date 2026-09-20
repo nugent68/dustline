@@ -182,14 +182,14 @@ def spec_prior_chi2(meta: np.ndarray, spec: pd.DataFrame) -> tuple[np.ndarray, n
     t, te = spec.teff_spec.values.astype(float), spec.teff_spec_err.values.astype(float)
     g, ge = spec.logg_spec.values.astype(float), spec.logg_spec_err.values.astype(float)
     z, ze = spec.feh_spec.values.astype(float), spec.feh_spec_err.values.astype(float)
-    has = np.isfinite(t)                      # a T_eff prior is required; log g / [M/H] optional
+    has = np.isfinite(t) | np.isfinite(g) | np.isfinite(z)     # any of the three terms
     if not has.any():
         return out, has
     te = np.maximum(np.nan_to_num(te, nan=100.0), 1.0)
     ge = np.maximum(np.nan_to_num(ge, nan=0.3), 0.05)
     ze = np.maximum(np.nan_to_num(ze, nan=0.3), 0.05)
     zc = np.clip(np.nan_to_num(z, nan=0.0), meta[:, 2].min(), meta[:, 2].max())
-    chi = ((meta[:, 0][:, None] - t[None, :]) / te[None, :]) ** 2
+    chi = np.where(np.isfinite(t)[None, :], ((meta[:, 0][:, None] - np.nan_to_num(t)[None, :]) / te[None, :]) ** 2, 0.0)
     chi += np.where(np.isfinite(g)[None, :], ((meta[:, 1][:, None] - np.nan_to_num(g)[None, :]) / ge[None, :]) ** 2, 0.0)
     chi += np.where(np.isfinite(z)[None, :], ((meta[:, 2][:, None] - zc[None, :]) / ze[None, :]) ** 2, 0.0)
     out[:, has] = chi[:, has]
@@ -256,7 +256,7 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
     corrections: see build_grid.
     """
     use_spec = spectro_priors and all(c in stars.columns for c in SPEC_COLS) \
-        and np.isfinite(stars.teff_spec).any()
+        and (np.isfinite(stars.teff_spec).any() or np.isfinite(stars.feh_spec).any())
     grid = build_grid(ws, bands, law, mh=MH_SPECTRO if use_spec else MH_DEFAULT,
                       corrections=corrections)
     if rv_fixed is not None:
@@ -281,7 +281,8 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
     err_all = xp["flux_err"].astype(np.float64)
     wave = xp["wave_nm"]
     n = len(g) if not max_stars else min(max_stars, len(g))
-    n_spec = int(np.isfinite(g.teff_spec.iloc[:n]).sum()) if use_spec else 0
+    n_spec = int((np.isfinite(g.teff_spec.iloc[:n]) | np.isfinite(g.logg_spec.iloc[:n])
+                  | np.isfinite(g.feh_spec.iloc[:n])).sum()) if use_spec else 0
     print(f"fitting {n} stars, {len(grid['meta'])} models, bands {bands}"
           + (f", spectroscopic priors for {n_spec}" if use_spec else "")
           + (f", R_V fixed at {grid['rv'][0]:.2f}" if rv_fixed is not None else "")
@@ -348,7 +349,8 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
     keep = ["source_id", "ra", "dec", "parallax", "parallax_error", "parallax_over_error",
             "ruwe", "ipd_frac_multi_peak", "phot_g_mean_mag", "bp_rp"]
     if use_spec:
-        keep += [c for c in SPEC_COLS + ("spec_snr",) if c in g.columns]
+        keep += [c for c in SPEC_COLS + ("spec_snr", "teff_desi", "teff_ap", "logg_ap", "feh_ap", "ap_snr")
+                 if c in g.columns and c not in keep]
     res = g[keep].iloc[:n].merge(res, on="source_id")
     res["D_kpc"] = 1.0 / (res.parallax - PLX_ZP)
     res["D_err"] = res.parallax_error / (res.parallax - PLX_ZP) ** 2
@@ -432,7 +434,8 @@ def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str
                          force: bool = False, spectro_priors: bool = True,
                          freeze_offsets: bool = False,
                          rv_fixed: float | None = None,
-                         teff_from_colour: bool = False) -> pd.DataFrame:
+                         teff_from_colour: bool = False,
+                         desi_teff: bool = False) -> pd.DataFrame:
     """The fit + zero-point iteration: fit, measure offsets, refit until the
     optical offsets move < converge mag (NIR frozen after pass 1). Cached.
 
@@ -454,12 +457,16 @@ def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str
     star_off = None
     has_uv = any(b.startswith(UV_PREFIXES) for b in bands)
     fit = None
-    if teff_from_colour:
-        stars = stars.copy()
-        for c in SPEC_COLS:
-            if c not in stars:
-                stars[c] = np.nan
+    stars = stars.copy()
+    for c in SPEC_COLS:
+        if c not in stars:
+            stars[c] = np.nan
+    if "teff_desi" not in stars:
         stars["teff_desi"] = stars["teff_spec"]
+    if not desi_teff and not teff_from_colour:
+        # the DESI T_eff label is not a 100 K anchor (S/N-dependent by +/-200 K against
+        # the colour scale): log g / [Fe/H] priors only; T_eff from the data + radius prior
+        stars["teff_spec"] = np.nan
     n_pass = 1 if freeze_offsets else max_passes + (1 if has_uv else 0)
     for p in range(max(n_pass, 2 if teff_from_colour else 1)):
         if teff_from_colour:
@@ -488,7 +495,7 @@ def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str
             break
     if star_off is not None:
         fit = fit.merge(star_off, on="source_id", how="left")
-    if teff_from_colour:
+    if "teff_desi" not in fit:
         fit = fit.merge(stars[["source_id", "teff_desi"]], on="source_id", how="left")
     fit.round(5).to_csv(out_path, index=False)
     print(f"wrote {out_path}: {len(fit)} stars", flush=True)

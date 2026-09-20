@@ -38,6 +38,7 @@ class SurveyPlan:
     notes: list[str]
     spectro: str = "none"   # "desi" | "none": per-star spectroscopic template priors
     mode: str = "law"       # "law" | "column"
+    apogee: bool = True     # APOGEE DR17 ASPCAP parameters (all sky; external T_eff check)
     uv: str = "none"        # "galex" | "none": GALEX GUVcat FUV/NUV (needs the UV-IR model cache)
     mir: str = "wise"       # "wise" | "none": AllWISE W1/W2 (needs the UV-IR model cache)
 

@@ -143,12 +143,17 @@ class Sightline:
     uv, mir : bool           GALEX FUV/NUV and AllWISE W1/W2 where the footprint has
                              them - only taken when the model cache covers the bands
                              (the newera_uvir_cache asset; $DUSTLINE_MODEL_CACHE)
+    min_av : float | None    A_V above which a star enters the R_V law average
+                             (default 2.0; 0.5 is workable with spectroscopic priors)
+    desi_teff : bool         also use the DESI T_eff label as a locked prior (off: the
+                             label is S/N-dependent by +/-200 K against the colour scale)
     """
 
     def __init__(self, ra: float, dec: float, radius_arcmin: float = DEFAULT_RADIUS_ARCMIN,
                  photometry: UserPhotometry | None = None, prefer_deep: bool = True,
                  spectro_priors: bool = True, freeze_offsets: bool = False,
-                 uv: bool = True, mir: bool = True):
+                 uv: bool = True, mir: bool = True, min_av: float | None = None,
+                 desi_teff: bool = False):
         from . import models
 
         self.ra, self.dec = float(ra), float(dec)
@@ -165,6 +170,8 @@ class Sightline:
                 models.cache_covers(b) for b in ("WISE_W1", "WISE_W2"))):
             self.plan.mir = "none"
         self.freeze_offsets = bool(freeze_offsets)
+        self.min_av = min_av
+        self.desi_teff = bool(desi_teff)
         config = dict(optical=self.plan.optical, nir=self.plan.nir,
                       user_phot=str(photometry.path) if photometry else None)
         # non-default options only, so the cache keys of plain law-mode runs are unchanged
@@ -175,6 +182,10 @@ class Sightline:
             config["teff_lock"] = "colour"      # v0.5: T_eff locked to the BP-RP locus
         if self.freeze_offsets:
             config["freeze_offsets"] = True
+        if self.desi_teff:
+            config["desi_teff"] = True
+        if self.plan.mode == "law" and self.plan.spectro != "none":
+            config["priors"] = "v0.6"          # log g/[Fe/H] priors + corrected templates
         if self.plan.uv != "none":
             config["uv"] = self.plan.uv
         if self.plan.mir != "none":
@@ -228,7 +239,7 @@ class Sightline:
             spectro_priors=(self.plan.spectro != "none") or self.plan.mode == "column",
             freeze_offsets=self.freeze_offsets,
             rv_fixed=ensemble.RV_ASSUMED if self.plan.mode == "column" else None,
-            teff_from_colour=(self.plan.mode == "column"))
+            teff_from_colour=(self.plan.mode == "column"), desi_teff=self.desi_teff)
 
         # 4. ensemble products: the measured law, or the assumed one where there
         #    is no reddening to measure it (column mode / too few A_V >= 2 stars)
@@ -236,7 +247,7 @@ class Sightline:
             law = ensemble.default_law(band_list, reason="high-latitude column mode")
         else:
             try:
-                law = ensemble.measure_law(fit, band_list)
+                law = ensemble.measure_law(fit, band_list, min_av=self.min_av or ensemble.MIN_AV_LAW)
             except RuntimeError as e:
                 print(f"law not measured: {e}")
                 law = ensemble.default_law(band_list, reason=str(e).split(" - ")[0])
@@ -244,6 +255,13 @@ class Sightline:
         law["bands"] = band_list
         law["n_fitted"] = int(len(fit))
         law["n_spec_prior"] = int(fit["spec_prior"].sum()) if "spec_prior" in fit else 0
+        if "teff_ap" in fit and np.isfinite(fit.teff_ap).any():
+            ok = np.isfinite(fit.teff_ap) & (fit.chi2_best * 3 / fit.n_xp < 2.5)
+            d = (fit.teff - fit.teff_ap)[ok]
+            law["apogee_check"] = dict(n=int(ok.sum()), teff_fit_minus_apogee=float(np.median(d)),
+                                       mad=float(1.4826 * np.median(np.abs(d - np.median(d)))))
+            print(f"APOGEE check: T_eff(fit) - T_eff(ASPCAP) = {np.median(d):+.0f} K "
+                  f"(MAD {law['apogee_check']['mad']:.0f}, N {ok.sum()})")
         law["survey_plan"] = dict(optical=self.plan.optical, nir=self.plan.nir,
                                   spectro=self.plan.spectro, mode=self.plan.mode,
                                   uv=self.plan.uv, mir=self.plan.mir)

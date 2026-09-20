@@ -16,7 +16,7 @@ import pandas as pd
 
 from .cache import Workspace
 from . import models
-from .catalogs import decals, decaps, desi, galex, ps1, vvv, wise
+from .catalogs import apogee, decals, decaps, desi, galex, ps1, vvv, wise
 from .catalogs.footprint import SurveyPlan
 
 TMASS_SYS = 0.03    # systematic added to 2MASS errors when used as a VVV fallback
@@ -78,6 +78,22 @@ def assemble(ws: Workspace, gaia: pd.DataFrame, plan: SurveyPlan,
         sp = desi.fetch(ws, gaia, force=force)
         if len(sp):
             df = df.merge(sp, on="source_id", how="left")
+
+    # --- APOGEE DR17 (IRFM-scale T_eff check; log g / [Fe/H] priors where DESI has none) ---
+    if getattr(plan, "apogee", False):
+        ap = apogee.fetch(ws, gaia, force=force)
+        if len(ap):
+            df = df.merge(ap, on="source_id", how="left")
+            for c in ("teff_spec", "teff_spec_err", "logg_spec", "logg_spec_err", "feh_spec",
+                      "feh_spec_err"):
+                if c not in df:
+                    df[c] = np.nan
+            fill = ~np.isfinite(df.logg_spec) & np.isfinite(df.logg_ap)
+            df.loc[fill, "logg_spec"] = df.loc[fill, "logg_ap"]
+            df.loc[fill, "logg_spec_err"] = 0.15
+            fill = ~np.isfinite(df.feh_spec) & np.isfinite(df.feh_ap)
+            df.loc[fill, "feh_spec"] = df.loc[fill, "feh_ap"]
+            df.loc[fill, "feh_spec_err"] = np.sqrt(df.loc[fill, "feh_ap_err"].fillna(0.1) ** 2 + 0.1 ** 2)
 
     # --- user photometry overrides/augments everything ---
     if user_phot is not None:

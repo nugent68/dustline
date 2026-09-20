@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `catalogs/apogee.py`: APOGEE DR17 ASPCAP parameters (Data Lab `sdss_dr17.apogee2_allstar`,
+  joined on Gaia EDR3 source_id); log g / [Fe/H] priors where DESI has none and an
+  IRFM-scale T_eff check recorded in the law dict (`apogee_check`).
+- `Sightline(min_av=...)` / `--min-av`: the R_V law threshold (0.5 is workable with priors);
+  `Sightline(desi_teff=True)` / `--desi-teff` re-enables the DESI T_eff label as a prior.
+- `examples/ztf20abgaovd`: the first mid-latitude SN Ia sightline (l 16°, b +27°, A_V ≈ 0.5):
+  R_V = 3.56 ± 0.89 (MAD) from 775 stars with A_V ≥ 0.5; column 0.44 vs SFD 0.47–0.55.
+
+### Changed
+- In law mode the DESI T_eff label is no longer used as a prior (its offset from the colour
+  scale swings by ±200 K with S/N); DESI/APOGEE log g and [Fe/H] priors remain, and
+  `spec_prior_chi2` accepts any subset of the three terms.
+
 ## v0.5.0 — 2026-09-20
 
 ### Added
