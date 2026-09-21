@@ -22,18 +22,65 @@ RUWE_MAX = 1.4
 IPD_MAX = 10
 
 
+D_GRID = np.geomspace(0.1, 25.0, 1200)
+PLX_ZP = -0.017
+D_FRAC_MAX = 0.25
+
+
+def distance_posterior(r: pd.DataFrame, sig_c: float = 0.05) -> pd.DataFrame:
+    """Per-star distance posterior on D_GRID: the (inflated) parallax likelihood x the
+    photometric distance implied by the fit (log D_phot = log R_MIST(best model) - 0.5 log C,
+    sigma = sig_logR_iso (+) sig_c) x a uniform prior in D.  1/parallax is biased for the
+    distant stars and the crowded-field errors are underestimated; the photometric term is
+    what the radius prior already assumed.  Adds D_med, D_lo, D_hi (16/84 %), D_frac
+    (half-width / median) and D_phot in place (no-op without the fit's logR_iso column)."""
+    if "logR_iso" not in r or "D_med" in r:
+        return r
+    infl = r["plx_inflate"].values if "plx_inflate" in r else np.ones(len(r))
+    plx = r.parallax.values - PLX_ZP
+    sig = r.parallax_error.values * infl
+    logD_phot = r.logR_iso.values - 0.5 * np.log10(np.maximum(r.C_best.values, 1e-30))
+    sig_phot = np.sqrt(r.sig_logR_iso.values ** 2 + sig_c ** 2)
+    lg = np.log10(D_GRID)
+    dD = np.gradient(D_GRID)
+    out = np.full((len(r), 3), np.nan)
+    for k in range(len(r)):
+        if not (np.isfinite(plx[k]) and np.isfinite(logD_phot[k]) and np.isfinite(sig[k])):
+            continue
+        chi = ((plx[k] - 1.0 / D_GRID) / sig[k]) ** 2 + ((lg - logD_phot[k]) / sig_phot[k]) ** 2
+        p = np.exp(-0.5 * (chi - chi.min())) * dD
+        c = np.cumsum(p) / p.sum()
+        out[k] = np.interp([0.5, 0.16, 0.84], c, D_GRID)
+    r["D_med"], r["D_lo"], r["D_hi"] = out[:, 0], out[:, 1], out[:, 2]
+    r["D_frac"] = 0.5 * (r.D_hi - r.D_lo) / r.D_med
+    r["D_phot"] = 10 ** logD_phot
+    return r
+
+
+def _plx_snr(r: pd.DataFrame) -> pd.Series:
+    """parallax S/N with the fit's error inflation applied."""
+    infl = r["plx_inflate"] if "plx_inflate" in r else 1.0
+    return r.parallax_over_error / infl
+
+
 def good_sample(r: pd.DataFrame, min_snr: float = 5.0, min_bands: int = 4) -> pd.Series:
-    """Quality cuts for the dust-run sample (needs a parallax distance)."""
-    return ((r.parallax_over_error > min_snr) & r.plx_used & (r.ruwe < RUWE_MAX)
-            & (r.ipd_frac_multi_peak <= IPD_MAX) & (r.chi2_best * 3 / r.n_xp < CHI2N_MAX)
-            & (r.n_phot >= min_bands) & (r.av < 7.9))
+    """Quality cuts for the dust-run sample (needs a parallax distance): inflated parallax
+    S/N > min_snr, and - when the fit carries the radius prior columns - a posterior distance
+    (parallax x photometric) better than D_FRAC_MAX."""
+    ok = ((_plx_snr(r) > min_snr) & r.plx_used & (r.ruwe < RUWE_MAX)
+          & (r.ipd_frac_multi_peak <= IPD_MAX) & (r.chi2_best * 3 / r.n_xp < CHI2N_MAX)
+          & (r.n_phot >= min_bands) & (r.av < 7.9))
+    if "logR_iso" in r:
+        distance_posterior(r)
+        ok = ok & (r.D_frac < D_FRAC_MAX)
+    return ok
 
 
 def law_sample(r: pd.DataFrame, min_snr: float = 2.0, min_bands: int = 4,
                min_av: float = MIN_AV_LAW) -> pd.Series:
     """Quality cuts for the LAW sample (R_V needs reddening, not distance).
     Below plx S/N 3 the radius prior is off, so those stars must be cool."""
-    return ((r.parallax_over_error > min_snr) & (r.ruwe < RUWE_MAX)
+    return ((_plx_snr(r) > min_snr) & (r.ruwe < RUWE_MAX)
             & (r.ipd_frac_multi_peak <= IPD_MAX) & (r.chi2_best * 3 / r.n_xp < CHI2N_MAX)
             & (r.n_phot >= min_bands) & (r.av < 7.9) & (r.av >= min_av)
             & (r.plx_used | (r.teff < 5500)))
@@ -176,13 +223,19 @@ def foreground_column(fit: pd.DataFrame, d_min_kpc: float = D_BEHIND_KPC,
     return out
 
 
-def dust_run(fit: pd.DataFrame, min_snr: float = 5.0, min_bands: int = 4) -> pd.DataFrame:
-    """A_V(D) running profile of the parallax stars: D_kpc, A_V median/16/84, N."""
+def dust_run(fit: pd.DataFrame, min_snr: float | None = None, min_bands: int = 4) -> pd.DataFrame:
+    """A_V(D) running profile of the parallax stars: D_kpc, A_V median/16/84, N.
+    Distances: the parallax x photometric posterior median where the fit provides it
+    (then min_snr defaults to 3 with the posterior-width cut), else 1/parallax (min_snr 5)."""
+    posterior = "logR_iso" in fit
+    if min_snr is None:
+        min_snr = 3.0 if posterior else 5.0
     s = fit[good_sample(fit, min_snr, min_bands)]
     if len(s) < 20:
         raise RuntimeError(f"only {len(s)} stars pass the run cuts (need >= 20); "
                            "try a larger radius")
-    prof = running_profile(s.D_kpc.values, s.av.values)
+    D = s.D_med.values if posterior else s.D_kpc.values
+    prof = running_profile(D, s.av.values)
     df = pd.DataFrame(dict(D_kpc=np.round(D_FINE, 2), AV_med=prof[:, 0],
                            AV_16=prof[:, 1], AV_84=prof[:, 2], n_stars=prof[:, 3]))
     df = df[np.isfinite(df.AV_med)].reset_index(drop=True)
@@ -237,3 +290,35 @@ def band_ratio_at_rv(band: str, rv: float, teff: float = 4500.0, logg: float = 2
     ph = models.Photometry(wave, [band])
     A = extinction.band_extinction(ph, flux[k] * 100.0, av, rv, law)
     return float(A[band] / av)
+
+
+def parallax_inflation(stars: pd.DataFrame, anchor: dict, gaia: pd.DataFrame | None = None,
+                       ruwe_max: float = RUWE_MAX, ipd_max: int = IPD_MAX) -> dict | None:
+    """In-field calibration of the Gaia parallax-error underestimate from the red-clump window
+    stars (all at the bulge distance D_RC of the anchor): the robust and plain standard
+    deviation of (plx - zp - 1/D_RC) / sigma_plx over the window (ruwe < 1.4, ipd <= 10).
+    Foreground giants in the window only widen the distribution (an upper limit); the
+    bar depth (+/-0.7 kpc = +/-11 uas at 8 kpc) is negligible against sigma_plx ~0.1 mas.
+    stars: the band-assembled table (needs parallax, parallax_error, ruwe,
+    ipd_frac_multi_peak and the anchor's J/Ks bands).  Returns dict(r, r_robust, r_std,
+    n, d_rc, by_G) or None when the window has < 50 stars with parallaxes."""
+    jb, kb = anchor["j_band"], anchor["ks_band"]
+    if not all(c in stars for c in (f"mag_{jb}", f"mag_{kb}", "parallax", "parallax_error")):
+        return None
+    jk = stars[f"mag_{jb}"] - stars[f"mag_{kb}"]
+    w = stars[(np.abs(jk - anchor["jk_rc"]) < 0.25) & (np.abs(stars[f"mag_{kb}"] - anchor["ks_rc"]) < 0.5)
+              & np.isfinite(stars.parallax) & (stars.parallax_error < 5)
+              & (stars.ruwe < ruwe_max) & (stars.ipd_frac_multi_peak <= ipd_max)]
+    if len(w) < 50:
+        return None
+    z = (w.parallax - PLX_ZP - 1.0 / anchor["D_RC"]) / w.parallax_error
+    rstd = lambda x: float(1.4826 * np.median(np.abs(x - np.median(x))))   # noqa: E731
+    by_g = {}
+    if "phot_g_mean_mag" in w:
+        for lo, hi in ((14, 16.5), (16.5, 17.5), (17.5, 18.5), (18.5, 19.5), (19.5, 21)):
+            m = (w.phot_g_mean_mag >= lo) & (w.phot_g_mean_mag < hi)
+            if m.sum() > 10:
+                by_g[f"{lo}-{hi}"] = dict(n=int(m.sum()), r_robust=rstd(z[m]), r_std=float(z[m].std()),
+                                          z_med=float(np.median(z[m])))
+    return dict(r=round(0.5 * (rstd(z) + float(z.std())), 2), r_robust=rstd(z), r_std=float(z.std()),
+                z_med=float(np.median(z)), n=int(len(w)), d_rc=float(anchor["D_RC"]), by_G=by_g)

@@ -1,4 +1,18 @@
-# dustline — HANDOFF (state at v0.7.0, 2026-09-21)
+# dustline — HANDOFF (state at v0.7.1, 2026-09-21 evening)
+
+**2026-09-21 evening (0095 session, this Mac `/Users/nugent/claude/dustline-pkg`; venv python
+3.14):** §6 DONE — `examples/ob170095` (README with the prototype comparison), `tests/
+test_regression_ob170095.py`, `tools/prior_profile.py` (package → declens prior inputs),
+CHANGELOG v0.7.1. Two catalog bugs fixed on the way (DECaPS `err_<b>` columns; VVV from the
+brutus table — Data Lab has no VVV table), and the prototype's crowded-field parallax
+treatment ported (`--plx-inflate`, posterior distances, in-field calibration; see the
+changelog). Result: R_V 3.16 ± 0.23 (326 stars), clump A_V 2.71 at 8.4 kpc, prior
+P_SEDdust_XP 4.43 kpc [3.35, 6.31] (prototype 4.41). Note the package clump column in DECam i
+is 1.67 vs the prototype's five-estimator 1.86: the (J−Ks) anchor is the least leveraged
+estimator (0.03 mag of clump colour = 0.1 in A_i); folding the i−Ks / g−i / LF estimators into
+`clump.py` is the next improvement for bulge sightlines. The 0095 XP cache is now on this Mac
+(`~/.cache/dustline/sightlines/ra+0267.86642_dec-033.13517_r5_*`).
+
 
 For a fresh agent session in this repo (`/Users/nugent/claude/dustline-pkg`, GitHub
 `nugent68/dustline`, public, tag `v0.7.0`, HEAD `0d28677`). Self-contained; the science

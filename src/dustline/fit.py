@@ -44,6 +44,9 @@ XP_PEAK_FLOOR = 0.005      # fraction of the spectrum peak
 XP_EDGE = (340.0, 1015.0)  # nm; outside is calibration edge, masked
 XP_SCALE = 3.0             # chi2_XP divisor (343 samples ~ 110 resolution elements)
 PLX_ZP = -0.017            # Lindegren+2021 global zero point (mas)
+PLX_INFLATE = 1.0          # default multiplier on the catalogue parallax_error (crowded fields: see
+                           # ensemble.parallax_inflation; DR3 errors are x1.6-4 too small above ~300
+                           # Gaia sources / arcmin^2, Luna+2023; El-Badry+2021 with a neighbour < 4")
 MIN_PLX_SNR_PRIOR = 3.0    # below this the radius prior is off
 PHOT_SYS_DEFAULT = 0.03    # per-band systematic added in quadrature
 NIR_PREFIXES = ("2MASS", "VISTA", "WISE")   # zero points frozen after pass 1
@@ -333,6 +336,8 @@ def _summarize(grid, chi2, chi2_prior, C, bands):
                    chi2_best=chi2[k[0], k[1], k[2], s],
                    chi2_prior_best=chi2_prior[k[0], k[1], k[2], s],
                    C_best=C[k[0], k[1], k[2], s],
+                   logR_iso=grid["rprior"][k[2], 0] if "rprior" in grid else np.nan,
+                   sig_logR_iso=grid["rprior"][k[2], 1] if "rprior" in grid else np.nan,
                    teff=tm, teff_err=ts, logg=gm, logg_err=gs, mh=zm, mh_err=zs,
                    av=am, av_err=as_, rv=rm, rv_err=rs)
         for j, b in enumerate(bands):
@@ -347,7 +352,7 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
               batch: int = 0, max_stars: int = 0, spectro_priors: bool = True,
               rv_fixed: float | None = None,
               star_offsets: pd.DataFrame | None = None, av_fixed: float | None = None,
-              corrections="default") -> pd.DataFrame:
+              corrections="default", plx_inflate: float = PLX_INFLATE) -> pd.DataFrame:
     """Fit every XP star; returns the per-star results table.
 
     With spectro_priors and ``teff_spec``/``logg_spec``/``feh_spec`` columns on
@@ -359,6 +364,7 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
     the T_eff-binned UV offsets) applied on top of the global ``offsets``.
     av_fixed: hold A_V at the nearest grid value (calibration fits at A_V = 0).
     corrections: see build_grid.
+    plx_inflate: multiplier on parallax_error (radius prior and the D_err column).
     """
     use_spec = spectro_priors and all(c in stars.columns for c in SPEC_COLS) \
         and (np.isfinite(stars.teff_spec).any() or np.isfinite(stars.feh_spec).any())
@@ -408,7 +414,7 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
         err[bad] = np.inf
         gs = g.iloc[sl]
         plx = gs.parallax.values - PLX_ZP
-        plx_err = gs.parallax_error.values
+        plx_err = gs.parallax_error.values * plx_inflate
         good = np.isfinite(plx) & (plx / plx_err > MIN_PLX_SNR_PRIOR)
         plx_fit = np.where(good, plx, 1.0)
         plxe_fit = np.where(good, plx_err, 1.0)
@@ -486,8 +492,9 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
         keep += [c for c in SPEC_COLS + ("spec_snr", "teff_desi", "teff_ap", "logg_ap", "feh_ap", "ap_snr")
                  if c in g.columns and c not in keep]
     res = g[keep].iloc[:n].merge(res, on="source_id")
+    res["plx_inflate"] = plx_inflate
     res["D_kpc"] = 1.0 / (res.parallax - PLX_ZP)
-    res["D_err"] = res.parallax_error / (res.parallax - PLX_ZP) ** 2
+    res["D_err"] = plx_inflate * res.parallax_error / (res.parallax - PLX_ZP) ** 2
     return res
 
 
@@ -569,7 +576,7 @@ def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str
                          freeze_offsets: bool = False,
                          rv_fixed: float | None = None,
                          teff_from_colour: bool = False,
-                         desi_teff: bool = False) -> pd.DataFrame:
+                         desi_teff: bool = False, plx_inflate: float = PLX_INFLATE) -> pd.DataFrame:
     """The fit + zero-point iteration: fit, measure offsets, refit until the
     optical offsets move < converge mag (NIR frozen after pass 1). Cached.
 
@@ -616,7 +623,8 @@ def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str
         print(f"--- fit pass {p + 1} (offsets: { {k: v for k, v in offsets.items()} }"
               + (f"; UV bins {uv_table}" if uv_table else "") + ")", flush=True)
         fit = fit_stars(ws, stars, xp, bands, offsets=offsets, law=law,
-                        spectro_priors=spectro_priors, rv_fixed=rv_fixed, star_offsets=star_off)
+                        spectro_priors=spectro_priors, rv_fixed=rv_fixed, star_offsets=star_off,
+                        plx_inflate=plx_inflate)
         offsets, moved = measure_offsets(fit, bands, offsets, min_bands_offsets,
                                          freeze_nir=(p >= 1), freeze_all=freeze_offsets)
         if has_uv and not freeze_offsets:

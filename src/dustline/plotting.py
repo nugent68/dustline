@@ -65,15 +65,28 @@ def plot_law(fit: pd.DataFrame, law: dict, path: str, title: str = "") -> str:
 
 def plot_run(fit: pd.DataFrame, law: dict, run: pd.DataFrame, path: str,
              band: str = "I", ratio: float | None = None, title: str = "",
-             min_snr: float = 5.0) -> str:
-    """Extinction-distance figure in band X: plx S/N > min_snr stars (A_X per star,
-    coloured by fitted T_eff), running median + 16-84 % band, dashed clump bridge."""
+             min_snr: float | None = None) -> str:
+    """Extinction-distance figure in band X: the dust-run stars (A_X per star, coloured by
+    fitted T_eff; distances = the parallax x photometric posterior where the fit provides it,
+    else 1/parallax), running median + 16-84 % band, dashed clump bridge."""
     from .ensemble import good_sample
 
     plt = _plt()
     if ratio is None:
         ratio = law["ratios_av"].get(band) or 1.0
+    posterior = "logR_iso" in fit
+    if min_snr is None:
+        min_snr = 3.0 if posterior else 5.0
     s = fit[good_sample(fit, min_snr=min_snr)]
+    if posterior:
+        D, Derr = s.D_med.values, [s.D_med.values - s.D_lo.values, s.D_hi.values - s.D_med.values]
+        infl = float(s.plx_inflate.iloc[0]) if "plx_inflate" in s and len(s) else 1.0
+        dlab = (f"Gaia stars, plx S/N > {min_snr:g} (sigma x {infl:g}), posterior D better than 25 % (N = {len(s)})")
+        xlab = "D (kpc; parallax x photometric posterior)"
+    else:
+        D, Derr = s.D_kpc.values, s.D_err.values
+        dlab = f"Gaia stars, plx S/N > {min_snr:g} (N = {len(s)})"
+        xlab = "D (kpc, 1/parallax)"
     # per-star A_X: the fit's own band extinction when available, else av * ratio
     if f"A_{band}" in s.columns:
         A = s[f"A_{band}"].values
@@ -83,10 +96,10 @@ def plot_run(fit: pd.DataFrame, law: dict, run: pd.DataFrame, path: str,
         Aerr = s.av_err.values * ratio
 
     fig, ax = plt.subplots(figsize=(8.5, 5.4))
-    ax.errorbar(s.D_kpc, A, xerr=s.D_err, yerr=Aerr, fmt="none",
+    ax.errorbar(D, A, xerr=Derr, yerr=Aerr, fmt="none",
                 ecolor="0.8", lw=0.5, zorder=0)
-    sc = ax.scatter(s.D_kpc, A, c=s.teff, s=14, cmap="RdYlBu", vmin=3500, vmax=7500,
-                    zorder=2, label=f"Gaia stars, plx S/N > {min_snr:g} (N = {len(s)})")
+    sc = ax.scatter(D, A, c=s.teff, s=14, cmap="RdYlBu", vmin=3500, vmax=7500,
+                    zorder=2, label=dlab)
 
     meas = run[~run.bridged]
     ax.plot(meas.D_kpc, meas.AV_med * ratio, "k-", lw=2, zorder=3, label="running median")
@@ -111,7 +124,7 @@ def plot_run(fit: pd.DataFrame, law: dict, run: pd.DataFrame, path: str,
     ax.set_xscale("log")
     ax.set_xlim(0.3, max(12.0, run.D_kpc.max() * 1.1))
     ax.set_ylim(0, max(np.nanpercentile(A, 99) * 1.3, (run.AV_84.max() * ratio) * 1.15))
-    ax.set_xlabel("D (kpc, 1/parallax)")
+    ax.set_xlabel(xlab)
     label = f"A$_{{{band}}}$" if len(band) <= 2 else f"A ({band})"
     ax.set_ylabel(label)
     ax.legend(fontsize=8.5, loc="upper left")

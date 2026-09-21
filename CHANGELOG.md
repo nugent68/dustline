@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.7.1 — 2026-09-21
+
+### Crowded-field parallaxes (`--plx-inflate`, posterior distances)
+Gaia DR3 parallax errors are underestimated in crowded fields — by up to ×4 towards the bulge
+above ~300 sources/arcmin² (Luna+2023, arXiv:2307.13719), by up to 80 % for a star with a
+neighbour within 4" (El-Badry+2021) — and 1/ϖ is biased for the distant stars, which are
+exactly the ones that set the outer run. Ported from the research prototype (2026-09-18):
+- `Sightline(plx_inflate=…)` / `dustline run --plx-inflate X`: multiplies `parallax_error` in
+  the radius prior and the D errors (config key `plx_inflate`, so a new workspace, seeded).
+- `ensemble.distance_posterior`: per star, the inflated-parallax likelihood × the photometric
+  distance the fit already implies (log D = log R_MIST(best model) − ½ log C, σ 0.08–0.15 dex;
+  `fit._summarize` now writes `logR_iso`, `sig_logR_iso`) × a uniform prior → `D_med`,
+  `D_lo`, `D_hi`, `D_frac`. `dust_run` uses `D_med` with inflated S/N > 3 and posterior
+  half-width < 25 % (unchanged 1/ϖ path when a fit table lacks the columns); `law_sample`
+  and `plot_run` use the inflated S/N.
+- `ensemble.parallax_inflation`: the in-field calibration from the red-clump window stars
+  (all at D_RC): robust/plain std of (ϖ − zp − 1/D_RC)/σ_ϖ, reported as
+  `result.json["plx_inflation_clump"]` on bulge sightlines with the value to rerun with.
+
+### Catalogs
+- DECaPS DR2: the Data Lab error columns are `err_<b>`, not `err_mag_<b>` (the query had
+  failed silently and the bulge path fell back to 2MASS-only).
+- VVV: Data Lab has no VVV table (only VHS, which excludes the VVV footprint); JHKs now
+  come from `decaps_dr2.stellar_inference` (mag_6/7/8 = VVV J/H/Ks of each DECaPS object,
+  matched by its Gaia id, else by position), with the `vvv_dr4.vvvsource` query as fallback.
+
+### Example: `examples/ob170095` (OGLE-2017-BLG-0095, l 357°, b −3°, 5′, DECaPS + VVV)
+R_V 3.16 ± 0.23 from 326 stars [raw 3.07]; zero points DECaPS g −0.078, r −0.092, i −0.033,
+z −0.041, Y −0.051, VVV J −0.013, H +0.006, Ks +0.037; in-field parallax-error underestimate
+×1.65 (robust) / ×1.88 (std) from 1,657 clump stars; clump E(J−Ks) 0.44 → A_V 2.71 ± 0.44
+at 8.4 kpc; A_I 0.67 / 1.23 / 1.32 / 1.40 / 1.55 at 1–5 kpc. `tools/prior_profile.py`
+writes the declens source-distance-prior inputs (DECam i profile + source band ratios):
+P_SEDdust_XP 4.43 kpc [3.35, 6.31] (prototype 4.41 [3.38, 5.90]). No APOGEE star with
+S/N > 30 inside 5′. Regression: `tests/test_regression_ob170095.py`.
+
 ## v0.7.0 — 2026-09-21
 
 ### Reddening-injection closure test (`tools/inject_reddening.py`)

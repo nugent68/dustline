@@ -153,7 +153,7 @@ class Sightline:
                  photometry: UserPhotometry | None = None, prefer_deep: bool = True,
                  spectro_priors: bool = True, freeze_offsets: bool = False,
                  uv: bool = True, mir: bool = True, min_av: float | None = None,
-                 desi_teff: bool = False):
+                 desi_teff: bool = False, plx_inflate: float = 1.0):
         from . import models
 
         self.ra, self.dec = float(ra), float(dec)
@@ -172,6 +172,7 @@ class Sightline:
         self.freeze_offsets = bool(freeze_offsets)
         self.min_av = min_av
         self.desi_teff = bool(desi_teff)
+        self.plx_inflate = float(plx_inflate)
         config = dict(optical=self.plan.optical, nir=self.plan.nir,
                       user_phot=str(photometry.path) if photometry else None)
         # non-default options only, so the cache keys of plain law-mode runs are unchanged
@@ -184,6 +185,8 @@ class Sightline:
             config["freeze_offsets"] = True
         if self.desi_teff:
             config["desi_teff"] = True
+        if self.plx_inflate != 1.0:
+            config["plx_inflate"] = self.plx_inflate   # crowded-field parallax-error multiplier
         if self.plan.mode == "law" and self.plan.spectro != "none":
             config["priors"] = "v0.6"          # log g/[Fe/H] priors + corrected templates
         if self.plan.uv != "none":
@@ -248,7 +251,8 @@ class Sightline:
             spectro_priors=(self.plan.spectro != "none") or self.plan.mode == "column",
             freeze_offsets=self.freeze_offsets,
             rv_fixed=ensemble.RV_ASSUMED if self.plan.mode == "column" else None,
-            teff_from_colour=(self.plan.mode == "column"), desi_teff=self.desi_teff)
+            teff_from_colour=(self.plan.mode == "column"), desi_teff=self.desi_teff,
+            plx_inflate=self.plx_inflate)
 
         # 4. ensemble products: the measured law, or the assumed one where there
         #    is no reddening to measure it (column mode / too few A_V >= 2 stars)
@@ -263,6 +267,9 @@ class Sightline:
         run_av = ensemble.dust_run(fit)
         law["bands"] = band_list
         law["n_fitted"] = int(len(fit))
+        law["plx_inflate"] = self.plx_inflate
+        law["distances"] = ("parallax x photometric posterior (parallax error x %.2f)" % self.plx_inflate
+                            if "logR_iso" in fit else "1/parallax")
         law["n_spec_prior"] = int(fit["spec_prior"].sum()) if "spec_prior" in fit else 0
         if "teff_ap" in fit and np.isfinite(fit.teff_ap).any():
             ok = np.isfinite(fit.teff_ap) & (fit.chi2_best * 3 / fit.n_xp < 2.5)
@@ -294,6 +301,13 @@ class Sightline:
             anchor = clump.find_clump(stars, law, f"{nir_prefix}_J", f"{nir_prefix}_Ks")
             if anchor:
                 law["clump_anchor"] = anchor
+                infl = ensemble.parallax_inflation(stars, anchor)
+                if infl:
+                    law["plx_inflation_clump"] = infl
+                    print(f"parallax-error underestimate from {infl['n']} clump stars at {infl['d_rc']:.1f} kpc: "
+                          f"x{infl['r_robust']:.2f} (robust) / x{infl['r_std']:.2f} (std)"
+                          + (f" - this run used x{self.plx_inflate:g}" if self.plx_inflate != 1.0 else
+                             f" - rerun with plx_inflate={infl['r']:g} (CLI --plx-inflate) to apply it"))
                 run_av = ensemble.bridge_to_clump(run_av, anchor)
                 print(f"red-clump anchor: A_V = {anchor['AV_column']:.2f} +/- "
                       f"{anchor['AV_column_err']:.2f} at D_RC = {anchor['D_RC']:.1f} kpc "

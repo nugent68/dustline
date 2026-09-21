@@ -27,7 +27,7 @@ def _cmd_run(a) -> int:
     sl = Sightline(a.ra, a.dec, radius_arcmin=a.radius, photometry=phot,
                    prefer_deep=not a.simple_surveys, spectro_priors=not a.no_spectro,
                    freeze_offsets=a.freeze_offsets, uv=not a.no_uv, mir=not a.no_mir,
-                   min_av=a.min_av, desi_teff=a.desi_teff)
+                   min_av=a.min_av, desi_teff=a.desi_teff, plx_inflate=a.plx_inflate)
     res = sl.run(force=a.force, refit=a.refit)
     tab = res.extinction(a.filter)
     rv = res.rv
@@ -102,6 +102,9 @@ def main(argv=None) -> int:
                    help="A_V threshold of the R_V law sample (default 2.0)")
     r.add_argument("--desi-teff", action="store_true",
                    help="also lock T_eff to the DESI label (off by default; see docs)")
+    r.add_argument("--plx-inflate", type=float, default=1.0,
+                   help="multiply the Gaia parallax errors (crowded fields: DR3 errors are x1.6-4 too small "
+                        "above ~300 sources/arcmin^2; a bulge run reports the in-field value from the red clump)")
     r.add_argument("--no-uv", action="store_true", help="do not use GALEX FUV/NUV")
     r.add_argument("--no-mir", action="store_true", help="do not use AllWISE W1/W2")
     r.add_argument("--freeze-offsets", action="store_true",
