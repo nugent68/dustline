@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.7.0 — unreleased
+## v0.7.0 — 2026-09-21
 
 ### Reddening-injection closure test (`tools/inject_reddening.py`)
 The template calibrators (2,439 DESI dwarfs, 1,482 APOGEE giants) are reddened with a
@@ -30,12 +30,20 @@ table in the corrections asset (`rv_closure_k`) that `measure_law` applies per s
   products from the cached catalogs and XP spectra (no refetch).
 - `calib.aggregate(stat="mean")` option (clipped mean; not used — it did not change the
   closure).
-- Examples rerun on the fixed grid: bulge R_V 2.73 ± 0.53 (was 2.76), …
+- Asset `template_corrections.npz` re-released (v0.7.0 tag; the corrections tag
+  `tc26438c9b` keys the grids and workspaces, the closure table rides along).
 
-### Examples
-- `examples/ztf19abqmpti`: second SN Ia sightline (l 11°, b +24°, A_V ≈ 1): R_V = 3.44 ±
-  0.49 (MAD) from 2,186 stars with A_V ≥ 0.5, column 1.03 vs rescaled SFD 1.07 (v0.6 grid;
-  rerun below).
+### Examples (all rerun on the v0.7.0 stack; closure-corrected R_V, raw in brackets)
+- `examples/ob240669` (bulge, A_V 2–5): R_V 2.80 ± 0.54 from 883 stars [2.73]; clump
+  column 3.36 ± 0.63 at 6.1 kpc; A_I run within 0.03 of v0.6.
+- `examples/cosmos` (column mode): F/G 0.029 ± 0.004 (MAD 0.052, N 132), K/M 0.039.
+- `examples/ztf19abqmpti` (new; l 11°, b +24°, A_V ≈ 1): R_V 3.48 ± 0.48 from 2,228 stars
+  with A_V ≥ 0.5 [3.37]; column 1.07 ± 0.25 beyond 1 kpc = the rescaled SFD. The per-star
+  R_V–A_V–T_eff trend seen here (3.1 → 4.1 across A_V bins at fixed distance) is what
+  the injection test was built to explain.
+- `examples/ztf20abgaovd` (l 16°, b +27°, A_V ≈ 0.6): R_V 3.50 ± 0.84 from 1,394 stars
+  [3.32] (was 754 stars: the band-correction fix raised the field's A_V by ~0.1); column
+  0.57 ± 0.18 beyond 1 kpc, on the 3D map (0.55).
 
 ## v0.6.0 — 2026-09-20
 
