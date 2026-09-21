@@ -6,6 +6,9 @@ which reads the research prototype's formats):
   xp_law.json       rv, rv_mad, n_stars, ratios_source_g23 {g r i z Y J H Ks Ks2 Kp: A_X/A_i}
                     for the microlensed source (a NewEra SED at --teff/--logg under G23 at the
                     measured R_V), plus the per-star field ratios and the clump anchor
+  xp_stars_phot.csv the per-star table in the prototype's column names (teff, av, rv, A_i,
+                    D_med/D_lo/D_hi, plx_inflate, ...) for the declens figure scripts
+  clump_anchor.json the clump anchor in the prototype's keys (Ai_colour, D_RC_Ks, ...)
 
   python tools/prior_profile.py RA DEC --radius 5 [--plx-inflate 1.7] [--teff 6000 --logg 4.0] -o OUTDIR
 """
@@ -56,6 +59,22 @@ def main():
                phot_offsets=law.get("phot_offsets"), template_corrections=law.get("template_corrections"), model_cache=law.get("model_cache"),
                source="dustline package run; ratios for the source SED under G23 at the measured R_V, normalised to DECam i")
     json.dump(out, open(os.path.join(a.outdir, "xp_law.json"), "w"), indent=1)
+    # per-star table and clump anchor in the prototype's conventions (declens dust_run_figure.py)
+    from dustline import ensemble as _ens
+    st = res.stars.copy()
+    _ens.distance_posterior(st)
+    ri = law["ratios_av"].get("DECam_i", ext.ratio_av.iloc[0])
+    st["A_i"] = st["A_DECam_i"] if "A_DECam_i" in st else st.av * ri
+    st["A_i_err"] = st["A_DECam_i_err"] if "A_DECam_i_err" in st else st.av_err * ri
+    if "plx_inflate" not in st:
+        st["plx_inflate"] = 1.0
+    st.round(5).to_csv(os.path.join(a.outdir, "xp_stars_phot.csv"), index=False)
+    c = law.get("clump_anchor")
+    if c:
+        json.dump(dict(Ai_colour=c["AV_column"] * ri, Ai_conv_err=0.0, Ai_diff_spread=c["AV_column_err"] * ri,
+                       D_RC_Ks=c["D_RC"], D_RC_i=c["D_RC"], n_window=c["n_window"], n_est=1, E_JK=c["E_JK"], AV_column=c["AV_column"],
+                       ratio_i=ri, source="dustline clump.find_clump (J-Ks), converted to DECam i"),
+                  open(os.path.join(a.outdir, "clump_anchor.json"), "w"), indent=1)
     print(f"R_V {rv:.2f} +/- {law['rv_mad']:.2f} ({law['n_stars']} stars; raw {law.get('rv_raw')}); A_X/A_i for the {a.teff:.0f} K source: "
           + " ".join(f"{k} {v:.3f}" for k, v in ratios.items()))
     for d in (1, 2, 3, 4, 5, 6, 8):

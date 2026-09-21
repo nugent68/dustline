@@ -1,0 +1,13 @@
+{
+ "Ai_colour": 1.6678602994704377,
+ "Ai_conv_err": 0.0,
+ "Ai_diff_spread": 0.2698237282378096,
+ "D_RC_Ks": 8.43203518283688,
+ "D_RC_i": 8.43203518283688,
+ "n_window": 2270,
+ "n_est": 1,
+ "E_JK": 0.43989068498507244,
+ "AV_column": 2.711833154322422,
+ "ratio_i": 0.6150305732533788,
+ "source": "dustline clump.find_clump (J-Ks), converted to DECam i"
+}
