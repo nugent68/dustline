@@ -2,7 +2,7 @@
 (examples/cosmos), using the cached sightline workspace as the fixture (skipped
 when absent; `dustline run 150.12 2.21 --radius 30` builds it in ~25 min).
 
-Pinned (dustline v0.5.0: UV-IR cache, empirical template corrections, T_eff locked
+Pinned (dustline v0.5.0/v0.6.0: UV-IR cache, empirical template corrections, T_eff locked
 to the BP-RP locus, PS1 + 2MASS + WISE + GALEX, 30', DESI log g/[Fe/H], R_V fixed 3.05):
 - 592 XP stars; F/G column A_V 0.027 +/- 0.005 (MAD 0.050, N 128); K/M stars 0.026
   (the two agree - the K-dwarf systematic is gone); G-trend 0.01/0.03/0.03/0.05.

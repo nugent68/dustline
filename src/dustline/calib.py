@@ -25,7 +25,8 @@ import pandas as pd
 TEFF_EDGES = np.array([3500., 3750., 4000., 4250., 4500., 4750., 5000., 5250., 5500.,
                        5750., 6000., 6500., 7000.])   # (legacy; the bins are the grid nodes)
 FEH_EDGES = np.array([-3.0, -0.4, 1.0])      # metal-poor / solar-ish
-LOGG_MIN = 3.5                                # corrections are for dwarfs; giants untouched
+LOGG_MIN = 3.5                                # dwarf / giant boundary of the log g classes
+LOGG_CLASSES = ((3.5, 6.5), (0.0, 3.5))       # 0: dwarfs (BP-RP-locus T_eff), 1: giants (ASPCAP T_eff)
 MIN_PER_BIN = 15
 TEFF_PRIOR_SIGMA = 1.0    # K: the calibration fits (A_V = 0) AND the science fits LOCK T_eff
                           # to the grid point nearest the DESI label (grid step 100 K), so the
@@ -135,6 +136,40 @@ def deredden(xp: dict, stars: pd.DataFrame, bands: list[str], av: np.ndarray,
     return out, st
 
 
+def select_giant_calibrators(max_per_node: int = 120, dist_pc: float = 1200.0,
+                             snr_min: float = 50.0) -> pd.DataFrame:
+    """APOGEE DR17 giants (log g < 3.5, T_eff 3500-5500) with Gaia XP within dist_pc
+    at |b| > 30 deg (> 20 deg below 4500 K, where nearby giants are rare), capped
+    per 100 K node (highest S/N first).  ASPCAP T_eff (IRFM-calibrated for giants)
+    is the T_eff anchor of the giant corrections."""
+    import io
+    import urllib.parse
+    import urllib.request
+
+    from .catalogs.datalab import TAP, UA
+
+    cols = ("a.gaiaedr3_source_id AS source_id, a.teff, a.logg, a.fe_h AS feh, a.fe_h_err AS feh_err, "
+            "a.alpha_m AS alphafe, a.snr AS snr_med, a.telescope AS program, "
+            "g.ra, g.dec, g.b, g.parallax, g.phot_g_mean_mag, g.bp_rp")
+    adql = (f"SELECT {cols} FROM sdss_dr17.apogee2_allstar a JOIN gaia_dr3.gaia_source g "
+            f"ON g.source_id = a.gaiaedr3_source_id WHERE a.teff BETWEEN 3500 AND 5500 "
+            f"AND a.logg > 0 AND a.logg < {LOGG_MIN} AND a.snr > {snr_min} AND a.fe_h > -3 "
+            f"AND g.has_xp_continuous = 1 AND g.parallax > {1000.0 / dist_pc} "
+            f"AND g.parallax_over_error > 10 AND g.ruwe < 1.4 AND g.ipd_frac_multi_peak <= 10 "
+            f"AND ((ABS(g.b) > 30) OR (ABS(g.b) > 20 AND a.teff < 4500))")
+    q = urllib.parse.urlencode(dict(REQUEST="doQuery", LANG="ADQL", FORMAT="csv", QUERY=adql))
+    txt = urllib.request.urlopen(urllib.request.Request(TAP, data=q.encode(), headers=UA),
+                                 timeout=900).read().decode()
+    d = pd.read_csv(io.StringIO(txt)).drop_duplicates("source_id")
+    d["teff_err"] = 0.0
+    d["logg_err"] = 0.0
+    d = d.sort_values("snr_med", ascending=False)
+    nodes = teff_nodes()
+    inode = np.abs(nodes[None, :] - d.teff.values[:, None]).argmin(axis=1)
+    keep = pd.concat([d[inode == k].head(max_per_node) for k in range(len(nodes))])
+    return keep.sort_values("teff").reset_index(drop=True)
+
+
 def ratio_spectrum(flux, err, wave, model, edge=(340.0, 1015.0)):
     """obs / (C * model) with the scale C profiled over the XP range; NaN outside."""
     ok = np.isfinite(flux) & np.isfinite(err) & (wave >= edge[0]) & (wave <= edge[1]) & (model > 0)
@@ -167,12 +202,14 @@ def aggregate(fit: pd.DataFrame, ratios: np.ndarray, xp_wave: np.ndarray, bands:
     (observed - synthetic, mag).  Bins with < MIN_PER_BIN stars fall back to the
     T_eff bin over all [Fe/H], then to no correction."""
     edges = TEFF_EDGES if teff_edges is None else np.asarray(teff_edges, float)
-    nT, nZ = len(edges) - 1, len(FEH_EDGES) - 1
-    R = np.ones((nT, nZ, len(xp_wave)))
-    dm = np.zeros((nT, nZ, len(bands)))
-    n = np.zeros((nT, nZ), int)
+    nT, nZ, nG = len(edges) - 1, len(FEH_EDGES) - 1, len(LOGG_CLASSES)
+    R = np.ones((nT, nZ, nG, len(xp_wave)))
+    dm = np.zeros((nT, nZ, nG, len(bands)))
+    n = np.zeros((nT, nZ, nG), int)
     iT = np.clip(np.digitize(fit.teff_spec.values, edges) - 1, 0, nT - 1)
     iZ = np.clip(np.digitize(fit.feh_spec.values, FEH_EDGES) - 1, 0, nZ - 1)
+    lg = fit.logg_spec.values.astype(float) if "logg_spec" in fit else np.full(len(fit), 4.5)
+    iG = np.where(np.nan_to_num(lg, nan=4.5) >= LOGG_MIN, 0, 1)
     kern = np.exp(-0.5 * ((np.arange(-30, 31) * 2.0) / smooth_nm) ** 2)
     kern /= kern.sum()
 
@@ -182,20 +219,22 @@ def aggregate(fit: pd.DataFrame, ratios: np.ndarray, xp_wave: np.ndarray, bands:
         r = np.interp(xp_wave, xp_wave[good], r[good])
         return np.convolve(np.pad(r, 30, mode="edge"), kern, mode="valid")
 
-    for t in range(nT):
-        for z in range(nZ):
-            m = (iT == t) & (iZ == z)
-            if m.sum() < MIN_PER_BIN:
-                m = (iT == t)
-            if m.sum() < MIN_PER_BIN:
-                continue
-            n[t, z] = int(m.sum())
-            R[t, z] = med_ratio(m)
-            for j, b in enumerate(bands):
-                d = fit.loc[m, f"dm_{b}"].dropna()
-                dm[t, z, j] = float(d.median()) if len(d) >= MIN_PER_BIN else 0.0
+    for gcls in range(nG):
+        for t in range(nT):
+            for z in range(nZ):
+                m = (iT == t) & (iZ == z) & (iG == gcls)
+                if m.sum() < MIN_PER_BIN:
+                    m = (iT == t) & (iG == gcls)
+                if m.sum() < MIN_PER_BIN:
+                    continue
+                n[t, z, gcls] = int(m.sum())
+                R[t, z, gcls] = med_ratio(m)
+                for j, b in enumerate(bands):
+                    d = fit.loc[m, f"dm_{b}"].dropna()
+                    dm[t, z, gcls, j] = float(d.median()) if len(d) >= MIN_PER_BIN else 0.0
     return dict(teff_edges=edges, feh_edges=FEH_EDGES, xp_wave=xp_wave, ratio=R,
-                bands=np.array(bands), band_dm=dm, n=n, logg_min=LOGG_MIN)
+                bands=np.array(bands), band_dm=dm, n=n, logg_min=LOGG_MIN,
+                logg_classes=np.array(LOGG_CLASSES))
 
 
 def load(path=None) -> dict | None:
@@ -240,15 +279,21 @@ def apply(corr: dict, meta: np.ndarray, m_xp: np.ndarray, xp_wave: np.ndarray,
     nT, nZ = len(corr["teff_edges"]) - 1, len(corr["feh_edges"]) - 1
     iT = np.clip(np.digitize(meta[:, 0], corr["teff_edges"]) - 1, 0, nT - 1)
     iZ = np.clip(np.digitize(meta[:, 2], corr["feh_edges"]) - 1, 0, nZ - 1)
-    dwarf = meta[:, 1] >= float(corr["logg_min"])
-    has = corr["n"][iT, iZ] > 0
-    use = dwarf & has
+    ratio, band_dm, n = corr["ratio"], corr["band_dm"], corr["n"]
+    if ratio.ndim == 3:                      # legacy dwarf-only table
+        ratio, band_dm, n = ratio[:, :, None], band_dm[:, :, None], n[:, :, None]
+    iG = np.where(meta[:, 1] >= float(corr["logg_min"]), 0, 1)
+    iG = np.minimum(iG, n.shape[2] - 1)
+    has = n[iT, iZ, iG] > 0
+    if ratio.shape[2] == 1:                  # legacy: dwarfs only
+        has &= meta[:, 1] >= float(corr["logg_min"])
+    use = has
     R = np.ones((len(meta), len(xp_wave)), np.float32)
-    R[use] = np.stack([np.interp(xp_wave, corr["xp_wave"], corr["ratio"][t, z])
-                       for t, z in zip(iT[use], iZ[use])]).astype(np.float32)
+    R[use] = np.stack([np.interp(xp_wave, corr["xp_wave"], ratio[t, z, gc])
+                       for t, z, gc in zip(iT[use], iZ[use], iG[use])]).astype(np.float32)
     F = np.ones((len(meta), len(bands)))
     cb = list(corr["bands"])
     for j, b in enumerate(bands):
         if b in cb:
-            F[use, j] = 10.0 ** (-0.4 * corr["band_dm"][iT[use], iZ[use], cb.index(b)])
+            F[use, j] = 10.0 ** (-0.4 * band_dm[iT[use], iZ[use], iG[use], cb.index(b)])
     return m_xp * R, fnu0 * F, use

@@ -49,12 +49,14 @@ ASSETS: dict[str, dict] = {
         tag="v0.4.0",
         sha256="2e03d4f0c101e848faf9738132ea8db3af2f0d05afbf81dff1e2c38f2c6c8918",
         size=214_319_883),
-    # Empirical dwarf-template corrections per DESI T_eff / [Fe/H] bin from 2,451
-    # unreddened DESI x XP dwarfs (dustline.calib; tools/build_template_corrections.py).
+    # Empirical template corrections per T_eff grid node, [Fe/H] bin and log g class:
+    # 2,451 nearby DESI x XP dwarfs (T_eff locked to the BP-RP locus) and 1,482 nearby
+    # APOGEE x XP giants (T_eff/log g locked to ASPCAP), both dereddened with the
+    # Edenhofer+2023 3D map (dustline.calib; tools/build_template_corrections.py).
     "template_corrections.npz": dict(
-        tag="v0.5.0",
-        sha256="b7956d09e743edad0e68ebb91b1bd8ad926eb94eaa17c80db31faa29968a071f",
-        size=120060),
+        tag="v0.6.0",
+        sha256="158c8733a5b649025d03b91c449ce7047e8eb4afc74042ed7909c43ad5cda2a1",
+        size=190662),
 }
 
 

@@ -98,7 +98,15 @@ The design that closes (`dustline.calib`, `tools/build_template_corrections.py`)
   0.1 grid quantises the posterior and a grid starting at 0 biases every
   near-zero star positive.
 
-Closure on the calibrators (corrected templates, A_V free): dereddened G/F
+Giants (v0.6.0): the same machinery with 1,482 nearby APOGEE giants (D < 1.2 kpc,
+|b| > 30°, map-dereddened, median A_V 0.08), T_eff and log g locked to ASPCAP
+(IRFM scale for giants); the table carries a log g class axis. Closure: 0.00 ±
+0.01 at 4300–5300 K, map extinction recovered to 0.01–0.02; the sparse ends
+(< 4300 K, > 5300 K) are ±0.06. Caveat: a *free* giant fit in a reddened field
+still sits ~120 K below ASPCAP (no parallax–luminosity lever for giants), so
+far giants of mid-latitude fields need an external T_eff.
+
+Closure on the dwarf calibrators (corrected templates, A_V free): dereddened G/F
 stars 0.00, K stars 0.02–0.04; their own map extinction is recovered to 0.01.
 COSMOS: F/G column 0.027 ± 0.005 (MAD 0.050, from 0.072/0.065), K/M stars
 0.026 (from 0.185), G-magnitude trend 0.01/0.03/0.03/0.05 (from
@@ -143,10 +151,14 @@ of the field. What the COSMOS test (examples/cosmos, SFD A_V ≈ 0.05) showed:
 
 ## Validated against
 
-- OGLE-2024-BLG-0669 (l 13.2, b −1.6; PS1 + 2MASS, 9′): R_V = 2.80, MAD 0.46
-  (895 stars); red-clump column A_V = 3.27 ± 0.61 at D_RC = 6.2 kpc;
-  A_I = 0.35/0.82/0.99/1.16/1.26 at 1/2/3/4/5 kpc, bridged to 1.90 beyond
-  the clump (v0.5.0; v0.4.0 gave 2.84 ± 0.48, the 2500–25000 Å cache 2.88 ± 0.53). The packaged run is in examples/ob240669 and pinned by
+- OGLE-2024-BLG-0669 (l 13.2, b −1.6; PS1 + 2MASS, 9′): R_V = 2.76, MAD 0.50
+  (857 stars); red-clump column A_V = 3.41 ± 0.64 at D_RC = 6.1 kpc;
+  A_I = 0.34/0.81/0.95/1.07/1.15 at 1/2/3/4/5 kpc, bridged to 1.96 beyond
+  the clump (v0.6.0; v0.5.0 gave 2.80 ± 0.46, v0.4.0 2.84 ± 0.48, the
+  2500–25000 Å cache 2.88 ± 0.53).
+- ZTF20abgaovd (l 15.9, b +27.2; mid-latitude SN Ia sightline, 30′): R_V = 3.55,
+  MAD 0.85 (754 stars with A_V ≥ 0.5); column A_V = 0.44 ± 0.11 beyond 1 kpc vs
+  SFD 0.47–0.55 (examples/ztf20abgaovd). The packaged run is in examples/ob240669 and pinned by
   tests/test_regression_ob240669.py (runs when the sightline workspace is in
   the local cache).
 - COSMOS (l 237, b +42; column mode, 30′): F/G foreground column A_V = 0.027 ±

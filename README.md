@@ -95,9 +95,9 @@ systematic from the template calibration.
 
 **T_eff lock and template corrections (v0.5.0).** In column mode every dwarf's T_eff is
 locked to the empirical (Mamajek) main-sequence locus of its dereddened Gaia BP−RP, with a
-[Fe/H] term, and the NewEra dwarf templates carry empirical corrections per T_eff node
-built from 2,451 nearby DESI×XP dwarfs (`dustline.calib`; asset
-`template_corrections.npz`). Where the DESI DR1 Milky Way Survey covers the field
+[Fe/H] term, and the NewEra templates carry empirical corrections per T_eff node built
+from 2,451 nearby DESI×XP dwarfs and 1,482 nearby APOGEE×XP giants (`dustline.calib`;
+asset `template_corrections.npz`). Where the DESI DR1 Milky Way Survey covers the field
 (Dec > −25, |b| > 15) it supplies log g and [Fe/H] (Data Lab `desi_dr1.mws`, joined on
 Gaia `source_id`); its T_eff is *not* used as the prior — it proved unstable at the 100 K
 level, and it was the main cause of a 0.2 mag K-dwarf excess on COSMOS. Stars without a
@@ -130,9 +130,11 @@ start to pay at A_V ≳ 0.3, where the UV signal (≈ 0.9 mag) dwarfs the model 
 ## Example
 
 [examples/ob240669](examples/ob240669) is a complete run on the OGLE-2024-BLG-0669
-sightline (l 13.2°, b −1.6°; PS1 + 2MASS): R_V = 2.80 ± 0.46 from 895 stars, the A_I(D)
-table bridged to the red-clump column (A_V = 3.27 at 6.2 kpc), the law JSON and the two
-figures. [examples/cosmos](examples/cosmos) is the high-latitude column-mode run.
+sightline (l 13.2°, b −1.6°; PS1 + 2MASS): R_V = 2.76 ± 0.50 from 857 stars, the A_I(D)
+table bridged to the red-clump column (A_V = 3.41 at 6.1 kpc), the law JSON and the two
+figures. [examples/cosmos](examples/cosmos) is the high-latitude column-mode run and
+[examples/ztf20abgaovd](examples/ztf20abgaovd) a mid-latitude SN Ia sightline with a
+measured R_V = 3.55 ± 0.85 at A_V ≈ 0.5.
 
 ![extinction run](examples/ob240669/extinction_run_I.png)
 

@@ -1,8 +1,19 @@
 # Changelog
 
-## Unreleased
+## v0.6.0 — 2026-09-20
 
 ### Added
+- **Giant template corrections**: the corrections table gained a log g class axis
+  (dwarfs ≥ 3.5 / giants < 3.5). 1,482 nearby APOGEE DR17 giants with Gaia XP (D < 1.2 kpc,
+  |b| > 30°, > 20° below 4500 K; 120 per 100 K node from 4200 to 5200 K), dereddened with
+  the Edenhofer+2023 map (median A_V 0.08) and fitted at A_V = 0 with T_eff and log g locked
+  to ASPCAP (IRFM scale). Closure: dereddened giants 0.00 ± 0.01 at 4300–5300 K and their
+  map extinction recovered to 0.01–0.02; weaker at the sparse ends (< 4300 K: +0.06,
+  > 5300 K: −0.06). `tools/build_template_corrections.py {pull,fit} giants`, joint `build`;
+  `calib.select_giant_calibrators`, `calib.LOGG_CLASSES`. Legacy 3-D tables still load.
+- `gaia.by_ids_datalab` / `gaia.cone_datalab` (+ `_attach_twomass`): NOIRLab Data Lab
+  fallbacks (gaia_dr3.gaia_source + twomass.psc) used automatically when the Gaia archive
+  fails (it returned 408s for hours on 2026-09-20); `gaia.by_ids` retries.
 - `catalogs/apogee.py`: APOGEE DR17 ASPCAP parameters (Data Lab `sdss_dr17.apogee2_allstar`,
   joined on Gaia EDR3 source_id); log g / [Fe/H] priors where DESI has none and an
   IRFM-scale T_eff check recorded in the law dict (`apogee_check`).
@@ -15,6 +26,14 @@
 - In law mode the DESI T_eff label is no longer used as a prior (its offset from the colour
   scale swings by ±200 K with S/N); DESI/APOGEE log g and [Fe/H] priors remain, and
   `spec_prior_chi2` accepts any subset of the three terms.
+- Bulge example on the giant-corrected templates: R_V 2.76 ± 0.50 (857 stars; was 2.80 ±
+  0.46), clump 3.41, A_I(D) 5–8 % lower at 3–5 kpc where the stars are giants.
+
+### Known limitation
+- A free giant fit in a *reddened* field still lands ~120 K cooler than ASPCAP
+  (ZTF20abgaovd: dwarfs −22 K, giants −119 K): giants lack the parallax–luminosity lever
+  against the T_eff–A_V degeneracy, so the far giants of a mid-latitude field need an
+  external T_eff. The bulge (A_V 3–5) is much less sensitive to it.
 
 ## v0.5.0 — 2026-09-20
 

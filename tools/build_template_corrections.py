@@ -1,10 +1,13 @@
 """Build the empirical NewEra dwarf-template corrections (template_corrections.npz)
 from unreddened DESI x Gaia-XP dwarfs.  See dustline.calib for the rationale.
 
-  python tools/build_template_corrections.py pull    # calibrators, Gaia, XP (~1.5 h), PS1, WISE, GALEX
-  python tools/build_template_corrections.py fit     # A_V = 0 fits with DESI priors
-  python tools/build_template_corrections.py build   # aggregate -> template_corrections.npz
-  python tools/build_template_corrections.py all
+  python tools/build_template_corrections.py pull [dwarfs|giants]   # calibrators, Gaia, XP (~1.5 h), PS1, WISE, GALEX
+  python tools/build_template_corrections.py fit  [dwarfs|giants]   # A_V = 0 fits, T_eff locked
+  python tools/build_template_corrections.py build                  # dwarfs + giants -> template_corrections.npz
+  python tools/build_template_corrections.py all  [dwarfs|giants]
+
+Dwarfs: DESI x XP within 250 pc, T_eff locked to the BP-RP locus.  Giants: APOGEE x XP
+within 1.2 kpc, T_eff and log g locked to ASPCAP.
 
 Everything lives in the calibration workspace ~/.cache/dustline/sightlines/ra+000..._calib.
 """
@@ -26,15 +29,17 @@ from dustline.catalogs.xmatch import match_to_gaia
 BANDS_PS1 = {"g": "PS1_g", "r": "PS1_r", "i": "PS1_i", "z": "PS1_z", "y": "PS1_y"}
 
 
-def workspace() -> Workspace:
-    return Workspace(0.0, 0.0, 0.0, dict(calib="template_corrections"))
+def workspace(sample: str = "dwarfs") -> Workspace:
+    return Workspace(0.0, 0.0, 0.0, dict(calib="template_corrections") if sample == "dwarfs"
+                     else dict(calib="template_corrections", sample=sample))
 
 
-def stage_pull(ws: Workspace, max_per_bin: int = 250) -> None:
+def stage_pull(ws: Workspace, max_per_bin: int = 250, sample: str = "dwarfs") -> None:
     if not ws.has("calibrators.csv"):
-        d = calib.select_calibrators(max_per_bin=max_per_bin)
+        d = (calib.select_calibrators(max_per_bin=max_per_bin) if sample == "dwarfs"
+             else calib.select_giant_calibrators())
         d.to_csv(ws.path("calibrators.csv"), index=False)
-        print(f"{len(d)} calibrators")
+        print(f"{len(d)} {sample} calibrators")
     cal = pd.read_csv(ws.path("calibrators.csv"))
     if not ws.has("gaia.csv"):
         g = gaia.by_ids(cal.source_id.values)
@@ -61,10 +66,13 @@ def stage_pull(ws: Workspace, max_per_bin: int = 250) -> None:
         res.round(4).to_csv(ws.path("wise_gaia.csv"), index=False)
         print(f"AllWISE: {np.isfinite(res.mag_WISE_W1).sum()} with W1")
     if not ws.has("galex_gaia.csv"):
-        d = vizier.positions_query("II/335/galex_ais", galex._COLS, g.ra.values, g.dec.values, 3.0)
-        res = _shape_scattered(galex.shape, d, g, "RAJ2000", "DEJ2000")
+        if sample == "dwarfs":
+            d = vizier.positions_query("II/335/galex_ais", galex._COLS, g.ra.values, g.dec.values, 3.0)
+            res = _shape_scattered(galex.shape, d, g, "RAJ2000", "DEJ2000")
+        else:
+            res = pd.DataFrame(dict(source_id=[]))        # giants: no UV
         res.round(4).to_csv(ws.path("galex_gaia.csv"), index=False)
-        print(f"GALEX: {np.isfinite(res.mag_GALEX_NUV).sum()} with NUV")
+        print(f"GALEX: {int(np.isfinite(res.mag_GALEX_NUV).sum()) if len(res) else 0} with NUV")
 
 
 def _shape_scattered(shape, d: pd.DataFrame, g: pd.DataFrame, ra_col: str, dec_col: str) -> pd.DataFrame:
@@ -101,7 +109,7 @@ def stars_table(ws: Workspace) -> tuple[pd.DataFrame, list[str]]:
     return g, bands
 
 
-def stage_fit(ws: Workspace) -> None:
+def stage_fit(ws: Workspace, sample: str = "dwarfs") -> None:
     stars, bands = stars_table(ws)
     xp = dict(np.load(ws.path("xp_sampled.npz")))
     # the calibrators are nearby but not dust-free (z ~ 80-190 pc at |b| > 40 is behind
@@ -111,9 +119,13 @@ def stage_fit(ws: Workspace) -> None:
     print(f"3D-map A_V of the calibrators: median {np.median(av_map):.3f}, "
           f"16-84 % {np.percentile(av_map, 16):.3f}-{np.percentile(av_map, 84):.3f}")
     xp, stars = calib.deredden(xp, stars, bands, av_map)
-    # the T_eff coordinate: the empirical dwarf T_eff of the dereddened BP-RP, locked
     stars["teff_desi"] = stars["teff_spec"]
-    stars["teff_spec"] = calib.teff_from_bprp(stars.bp_rp.values, av_map, stars.feh_spec.values)
+    if sample == "dwarfs":
+        # the T_eff coordinate: the empirical dwarf T_eff of the dereddened BP-RP, locked
+        stars["teff_spec"] = calib.teff_from_bprp(stars.bp_rp.values, av_map, stars.feh_spec.values)
+    else:
+        # giants: ASPCAP T_eff (IRFM scale) and log g, locked
+        stars["logg_spec_err"] = 0.1
     stars["teff_spec_err"] = calib.TEFF_PRIOR_SIGMA
     ok = np.isfinite(stars.teff_spec)
     print(f"colour T_eff for {int(ok.sum())} of {len(stars)} calibrators; "
@@ -137,41 +149,53 @@ def stage_fit(ws: Workspace) -> None:
     print(f"fitted {len(fit)} calibrators at A_V = 0")
 
 
-def stage_build(ws: Workspace, out: Path) -> None:
-    fit = pd.read_csv(ws.path("xp_stars_av0.csv"))
-    r = np.load(ws.path("xp_ratios.npz"))
-    assert (r["source_id"] == fit.source_id.values).all()
-    bands = [c[3:] for c in fit.columns if c.startswith("dm_")]
-    # the locked-T_eff fits are poor by construction before the correction exists:
-    # keep everything but gross failures
-    ok = ((fit.chi2_best * 3 / fit.n_xp < 25.0) & (fit.n_phot >= 5)).values
-    print(f"{ok.sum()} of {len(fit)} calibrators used")
-    corr = calib.aggregate(fit[ok].reset_index(drop=True), r["ratio"][ok], r["wave_nm"], bands,
+def stage_build(out: Path) -> None:
+    """Aggregate every calibrator sample that has been fitted (dwarfs, giants) into one table."""
+    fits, ratios, wave = [], [], None
+    for sample in ("dwarfs", "giants"):
+        ws = workspace(sample)
+        if not ws.has("xp_stars_av0.csv"):
+            continue
+        fit = pd.read_csv(ws.path("xp_stars_av0.csv"))
+        r = np.load(ws.path("xp_ratios.npz"))
+        assert (r["source_id"] == fit.source_id.values).all()
+        # the locked-T_eff fits are poor by construction before the correction exists:
+        # keep everything but gross failures
+        ok = ((fit.chi2_best * 3 / fit.n_xp < 25.0) & (fit.n_phot >= 3)).values
+        print(f"{sample}: {ok.sum()} of {len(fit)} calibrators used")
+        fits.append(fit[ok].reset_index(drop=True))
+        ratios.append(r["ratio"][ok])
+        wave = r["wave_nm"]
+    fit = pd.concat(fits, ignore_index=True)
+    bands = sorted({c[3:] for c in fit.columns if c.startswith("dm_")})
+    corr = calib.aggregate(fit, np.concatenate(ratios), wave, bands,
                            teff_edges=calib.node_edges(calib.teff_nodes()))
     np.savez_compressed(out, **corr)
     print(f"wrote {out}: bins with data\n{corr['n']}")
     nodes = calib.teff_nodes()
-    for t in range(len(nodes)):
-        z = 1
-        if corr["n"][t, z] and nodes[t] % 500 == 0:
-            R = corr["ratio"][t, z]
-            print(f"  node {nodes[t]:.0f} K (N {corr['n'][t, z]:3d}): "
-                  f"ratio at 400/500/600/900 nm = "
-                  + "/".join(f"{np.interp(l, r['wave_nm'], R):.3f}" for l in (400, 500, 600, 900))
-                  + "  dm " + " ".join(f"{b.split('_')[-1]}{corr['band_dm'][t, z, j]:+.3f}"
-                                       for j, b in enumerate(bands)))
+    for gcls, name in enumerate(("dwarfs", "giants")):
+        for t in range(len(nodes)):
+            z = 1
+            if corr["n"][t, z, gcls] and nodes[t] % 500 == 0:
+                R = corr["ratio"][t, z, gcls]
+                print(f"  {name} node {nodes[t]:.0f} K (N {corr['n'][t, z, gcls]:3d}): "
+                      f"ratio at 400/500/600/900 nm = "
+                      + "/".join(f"{np.interp(l, wave, R):.3f}" for l in (400, 500, 600, 900))
+                      + "  dm " + " ".join(f"{b.split('_')[-1]}{corr['band_dm'][t, z, gcls, j]:+.3f}"
+                                           for j, b in enumerate(bands)))
 
 
 def main():
     stage = sys.argv[1] if len(sys.argv) > 1 else "all"
-    ws = workspace()
-    out = Path(sys.argv[2]) if len(sys.argv) > 2 else ws.path("template_corrections.npz")
+    sample = sys.argv[2] if len(sys.argv) > 2 else "dwarfs"
+    ws = workspace(sample)
+    out = Path(sys.argv[3]) if len(sys.argv) > 3 else workspace("dwarfs").path("template_corrections.npz")
     if stage in ("pull", "all"):
-        stage_pull(ws)
+        stage_pull(ws, sample=sample)
     if stage in ("fit", "all"):
-        stage_fit(ws)
+        stage_fit(ws, sample=sample)
     if stage in ("build", "all"):
-        stage_build(ws, out)
+        stage_build(out)
 
 
 if __name__ == "__main__":
