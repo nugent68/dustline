@@ -15,25 +15,26 @@ dustline run 150.12 2.21 --radius 30 --no-spectro --ref-av 0.059 --plots nospec/
 
 (~18 min for the XP fetch, 5 min for the 4,366-model grid, ~10 min of fits.)
 
-## Result (v0.5.0)
+## Result (v0.7.0)
 
 | sample (plx S/N > 5, D > 0.5 kpc) | N | A_V median | ± (bootstrap) | MAD |
 |---|---|---|---|---|
-| **F/G stars, T_eff ≥ 5500 K** (the headline column) | 128 | **0.027** | 0.005 | 0.050 |
-| K/M stars, T_eff < 5500 K | 231 | 0.026 | 0.008 | 0.077 |
-| … with a GALEX NUV point | 94 | 0.025 | 0.008 | |
-| G < 14 | 40 | 0.007 | 0.008 | |
-| 14 ≤ G < 15.5 | 89 | 0.027 | 0.009 | |
-| 15.5 ≤ G < 16.5 | 100 | 0.026 | 0.008 | |
-| G ≥ 16.5 | 130 | 0.046 | 0.025 | |
+| **F/G stars, T_eff ≥ 5500 K** (the headline column) | 132 | **0.029** | 0.004 | 0.052 |
+| K/M stars, T_eff < 5500 K | 227 | 0.039 | 0.007 | 0.092 |
+| … with a GALEX NUV point | 93 | 0.028 | 0.006 | |
+| G < 14 | 40 | 0.028 | 0.011 | |
+| 14 ≤ G < 15.5 | 89 | 0.035 | 0.008 | |
+| 15.5 ≤ G < 16.5 | 100 | 0.022 | 0.008 | |
+| G ≥ 16.5 | 130 | 0.041 | 0.011 | |
 
 Every star's T_eff is locked to the empirical Mamajek locus of its dereddened BP−RP (with a
 [Fe/H] term; DESI supplies log g/[Fe/H]), and the dwarf templates carry the empirical
 corrections built from 2,451 nearby DESI×XP dwarfs (`docs/method.md`). Compared with
 v0.4.0 (DESI T_eff prior, uncorrected templates: F/G 0.072 ± 0.009 / MAD 0.065, K/M 0.185,
 G-trend 0.02 → 0.20): **hot and cool stars now agree to 0.001**, the per-star scatter is
-0.050, and the magnitude trend is flat to ±0.02 except the faintest bin (+0.02, the XP
-magnitude term). The control with the lock but no corrections gives 0.039 ± 0.010 (F/G,
+0.05, and the magnitude trend is flat to ±0.01. (v0.7.0: the rebuilt corrections table
+and the fixed band corrections move F/G to 0.029 and the K/M stars to 0.039, both inside
+the ±0.03 zero-point budget; v0.5/0.6 read 0.027 / 0.026.) The control with the lock but no corrections gives 0.039 ± 0.010 (F/G,
 MAD 0.077) and 0.069 (K/M): the DESI T_eff label was the larger part of the old
 K-dwarf excess, the template colours the rest.
 

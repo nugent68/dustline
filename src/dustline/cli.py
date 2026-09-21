@@ -1,7 +1,7 @@
 """Command-line interface.
 
     dustline run RA DEC [--filter I] [--radius 5] [--phot my.csv --phot-bands g=DECam_g,Ks=VISTA_Ks]
-                        [--no-spectro] [--freeze-offsets] [--ref-av 0.05] [-o out.csv] [--force]
+                        [--no-spectro] [--freeze-offsets] [--ref-av 0.05] [-o out.csv] [--force | --refit]
     dustline fetch-assets            # pre-download the model assets
     dustline clear-cache [--all]     # remove sightline caches (and assets with --all)
 """
@@ -28,7 +28,7 @@ def _cmd_run(a) -> int:
                    prefer_deep=not a.simple_surveys, spectro_priors=not a.no_spectro,
                    freeze_offsets=a.freeze_offsets, uv=not a.no_uv, mir=not a.no_mir,
                    min_av=a.min_av, desi_teff=a.desi_teff)
-    res = sl.run(force=a.force)
+    res = sl.run(force=a.force, refit=a.refit)
     tab = res.extinction(a.filter)
     rv = res.rv
     if res.mode == "column":
@@ -112,6 +112,8 @@ def main(argv=None) -> int:
     r.add_argument("--plots", nargs="?", const=".", default=None,
                    help="write the R_V and extinction-run figures (optionally to this directory)")
     r.add_argument("--force", action="store_true", help="ignore cached results")
+    r.add_argument("--refit", action="store_true",
+                   help="redo the fits from the cached catalogs and XP spectra (no refetch)")
     r.set_defaults(func=_cmd_run)
 
     f = sub.add_parser("fetch-assets", help="pre-download the model assets")

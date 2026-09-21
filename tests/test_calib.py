@@ -57,3 +57,39 @@ def test_apply_only_dwarfs_in_populated_bins():
 def test_load_disabled(monkeypatch):
     monkeypatch.setenv("DUSTLINE_TEMPLATE_CORR", "none")
     assert calib.load() is None and calib.tag(None) == ""
+
+
+def test_aggregate_bins_by_best_fit_model():
+    """The table is looked up by the MODEL's (T_eff, [M/H], log g) in apply(), so
+    aggregate() must bin the calibrators the same way when the fit columns exist."""
+    corr, wave = _corr()
+    n = 60
+    fit = pd.DataFrame(dict(teff_spec=np.full(n, 4600.0), feh_spec=np.full(n, 0.0), logg_spec=np.full(n, 4.5),
+                            teff_best=np.full(n, 4600.0), mh_best=np.r_[np.full(n // 2, -0.5), np.full(n // 2, 0.0)],
+                            logg_best=np.full(n, 4.5), dm_PS1_g=np.zeros(n), dm_2MASS_Ks=np.zeros(n)))
+    ratios = np.where(fit.mh_best.values[:, None] < -0.4, 0.8, 1.2) * np.ones((n, len(wave)))
+    c = calib.aggregate(fit, ratios, wave, ["PS1_g", "2MASS_Ks"])
+    t = np.digitize(4600.0, calib.TEFF_EDGES) - 1
+    assert c["n"][t, 0, 0] == 30 and c["n"][t, 1, 0] == 30
+    assert abs(np.interp(600, wave, c["ratio"][t, 0, 0]) - 0.8) < 1e-6      # metal-poor models
+    assert abs(np.interp(600, wave, c["ratio"][t, 1, 0]) - 1.2) < 1e-6      # solar models
+    # unsmoothed by default: a 10 nm feature survives
+    ratios2 = np.ones((n, len(wave)))
+    ratios2[:, (wave >= 400) & (wave < 410)] = 0.7
+    c2 = calib.aggregate(fit.assign(mh_best=0.0), ratios2, wave, ["PS1_g", "2MASS_Ks"])
+    assert abs(np.interp(404, wave, c2["ratio"][t, 1, 0]) - 0.7) < 1e-6
+    c3 = calib.aggregate(fit.assign(mh_best=0.0), ratios2, wave, ["PS1_g", "2MASS_Ks"], smooth_nm=20.0)
+    assert np.interp(404, wave, c3["ratio"][t, 1, 0]) > 0.9
+
+
+def test_rv_closure_lookup():
+    corr, _ = _corr()
+    nT, nG = corr["n"].shape[0], corr["n"].shape[2]
+    assert (calib.rv_closure(corr, [4600.0, 5600.0], [4.5, 4.5]) == 0).all()     # no table -> 0
+    k = np.zeros((nT, nG))
+    t_cool = np.digitize(4600.0, calib.TEFF_EDGES) - 1
+    k[t_cool, 0] = 0.03
+    k[t_cool, 1] = 0.01
+    corr = dict(corr, rv_closure_k=k)
+    out = calib.rv_closure(corr, [4600.0, 4600.0, 5600.0, np.nan], [4.5, 2.0, 4.5, 4.5])
+    assert out.tolist() == [0.03, 0.01, 0.0, 0.0]

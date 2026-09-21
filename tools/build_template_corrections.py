@@ -149,7 +149,7 @@ def stage_fit(ws: Workspace, sample: str = "dwarfs") -> None:
     print(f"fitted {len(fit)} calibrators at A_V = 0")
 
 
-def stage_build(out: Path) -> None:
+def stage_build(out: Path, stat: str = "median") -> None:
     """Aggregate every calibrator sample that has been fitted (dwarfs, giants) into one table."""
     fits, ratios, wave = [], [], None
     for sample in ("dwarfs", "giants"):
@@ -169,7 +169,7 @@ def stage_build(out: Path) -> None:
     fit = pd.concat(fits, ignore_index=True)
     bands = sorted({c[3:] for c in fit.columns if c.startswith("dm_")})
     corr = calib.aggregate(fit, np.concatenate(ratios), wave, bands,
-                           teff_edges=calib.node_edges(calib.teff_nodes()))
+                           teff_edges=calib.node_edges(calib.teff_nodes()), stat=stat)
     np.savez_compressed(out, **corr)
     print(f"wrote {out}: bins with data\n{corr['n']}")
     nodes = calib.teff_nodes()
@@ -195,7 +195,7 @@ def main():
     if stage in ("fit", "all"):
         stage_fit(ws, sample=sample)
     if stage in ("build", "all"):
-        stage_build(out)
+        stage_build(out, stat=sys.argv[4] if len(sys.argv) > 4 else "median")
 
 
 if __name__ == "__main__":

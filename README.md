@@ -60,8 +60,11 @@ res = dustline.Sightline(ra, dec, photometry=phot).run()
 
 ## What you get
 
-- **R_V** — median and star-to-star scatter of the well-reddened (A_V ≥ 2.5) parallax
-  stars, with systematic notes (NIR zero-point sensitivity ±0.05, blue-end XP caveats).
+- **R_V** — median and star-to-star scatter of the well-reddened (A_V ≥ 2, or `--min-av`)
+  parallax stars, closure-corrected per star (the reddening-injection test on the
+  template calibrators, v0.7.0: cool templates read R_V ~0.25 low at A_V 1; `rv_raw`
+  keeps the uncorrected value), with systematic notes (closure ±0.05, NIR zero-point
+  sensitivity ±0.05, blue-end XP caveats).
 - **A_X(D)** — running median and 16/84 % envelope of the per-star extinctions of the
   Gaia-parallax stars in 0.1 kpc steps, for any filter.
 - **Red-clump bridge** — on bulge/long-bar sightlines (|l| < 20°, |b| < 10°) the red
@@ -137,6 +140,17 @@ figures. [examples/cosmos](examples/cosmos) is the high-latitude column-mode run
 measured R_V = 3.55 ± 0.85 at A_V ≈ 0.5.
 
 ![extinction run](examples/ob240669/extinction_run_I.png)
+
+## Validation: reddening injection
+
+`tools/inject_reddening.py` reddens the template calibrators (nearby DESI dwarfs and
+APOGEE giants, map-dereddened) with a known G23 law and refits them as a field is fitted.
+It measured the fit's T_eff–A_V–R_V coupling (+0.45 in R_V and +0.10 in A_V per +100 K of
+T_eff error — symmetric, so the ensemble median is unbiased, but never split a field by
+*fitted* T_eff), caught a grid bug and two flaws in the correction table (v0.7.0), and
+left a per-node closure table that `measure_law` applies. Warm templates (dwarfs ≥ 5100 K,
+giants ≥ 4500 K) close to 0.05 in R_V; cool ones needed the correction. See
+[docs/method.md](docs/method.md).
 
 ## Caveats
 

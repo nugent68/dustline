@@ -51,15 +51,23 @@ def running_profile(D: np.ndarray, A: np.ndarray, frac: float = 0.25,
 
 
 def measure_law(fit: pd.DataFrame, bands: list[str], min_snr: float = 2.0,
-                min_bands: int = 4, min_av: float = MIN_AV_LAW) -> dict:
-    """The sightline law: R_V statistics + per-star band ratios A_b/A_V."""
+                min_bands: int = 4, min_av: float = MIN_AV_LAW, closure: bool = True) -> dict:
+    """The sightline law: R_V statistics + per-star band ratios A_b/A_V.
+
+    closure: subtract the reddening-injection closure offset of each star's
+    template node (calib.rv_closure: k/A_V in 1/R_V; cool dwarfs and giants read
+    R_V ~0.25 low at A_V = 1) - rv_raw keeps the uncorrected median."""
+    from . import calib
+
     w = fit[law_sample(fit, min_snr, min_bands, min_av)]
     if len(w) < 10:
         raise RuntimeError(
             f"only {len(w)} stars with A_V >= {min_av} pass the law cuts - "
             "not enough reddening on this sightline to measure R_V; "
             "the A(D) run is still produced (at the G23 default shape)")
-    rv = w.rv.values
+    rv_raw = w.rv.values
+    k = calib.rv_closure(calib.load(), w.teff.values, w.logg.values) if closure else np.zeros(len(w))
+    rv = np.where(k != 0, 1.0 / np.clip(1.0 / rv_raw - k / np.maximum(w.av.values, 0.3), 1e-3, None), rv_raw)
     rve = np.maximum(w.rv_err.values, 0.05)
     wm = 1.0 / rve ** 2
     rv_med = float(np.median(rv))
@@ -67,12 +75,17 @@ def measure_law(fit: pd.DataFrame, bands: list[str], min_snr: float = 2.0,
     ratios, ratios_mad = {}, {}
     for b in bands:
         q = (w[f"A_{b}"] / w["av"]).values     # A_band / A_V per star
+        if closure and (k != 0).any():
+            # move each corrected star's ratio along the law's R_V dependence
+            rg, qg = _ratio_curve(b)
+            q = q * np.interp(rv, rg, qg) / np.interp(rv_raw, rg, qg)
         med = float(np.median(q))
         ratios[b] = med
         ratios_mad[b] = float(1.4826 * np.median(np.abs(q - med)))
     return dict(rv=rv_med, rv_mad=rv_mad,
                 rv_mean=float((wm * rv).sum() / wm.sum()),
                 rv_mean_err=float(1.0 / np.sqrt(wm.sum())),
+                rv_raw=float(np.median(rv_raw)), n_closure=int((k != 0).sum()),
                 n_stars=int(len(w)), min_av=float(min_av),
                 ratios_av=ratios, ratios_av_mad=ratios_mad,
                 rv_16=float(np.percentile(rv, 16)), rv_84=float(np.percentile(rv, 84)),
@@ -198,6 +211,17 @@ def bridge_to_clump(run: pd.DataFrame, anchor: dict) -> pd.DataFrame:
     tail = pd.DataFrame(dict(D_kpc=np.round(ext, 2), AV_med=mu, AV_16=lo, AV_84=hi,
                              n_stars=0, bridged=True))
     return pd.concat([run, tail], ignore_index=True)
+
+
+_ratio_curves: dict = {}
+
+
+def _ratio_curve(band: str) -> tuple[np.ndarray, np.ndarray]:
+    """band_ratio_at_rv tabulated on R_V 2.0-6.0 (memoised)."""
+    if band not in _ratio_curves:
+        rg = np.linspace(2.3, 5.6, 34)           # the G23 validity range
+        _ratio_curves[band] = (rg, np.array([band_ratio_at_rv(band, r) for r in rg]))
+    return _ratio_curves[band]
 
 
 def band_ratio_at_rv(band: str, rv: float, teff: float = 4500.0, logg: float = 2.5,

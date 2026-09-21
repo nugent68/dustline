@@ -1,11 +1,41 @@
 # Changelog
 
-## Unreleased
+## v0.7.0 — unreleased
 
+### Reddening-injection closure test (`tools/inject_reddening.py`)
+The template calibrators (2,439 DESI dwarfs, 1,482 APOGEE giants) are reddened with a
+known G23 law (A_V 1, R_V 3.05; also 0.5 / 2 and R_V 3.8) and refitted as a field is
+(T_eff free, priors, corrections, parallax S/N degraded to 10). It measured the
+T_eff–A_V–R_V coupling (+0.45 in R_V, +0.10 in A_V per +100 K; symmetric, so the
+ensemble median is unbiased; the R_V–A_V correlation is the per-star error ellipse) and
+found three defects, all fixed (docs/method.md):
+- **Grid**: the per-band template corrections were cancelled at every A_V ≠ 0
+  (`A_band` was measured against the corrected band fluxes). Grids rebuilt (`b2` key).
+- **Corrections table**: σ = 20 nm smoothing erased the TiO-band-scale residuals of the
+  cool templates (−24 % at 400 nm left in the 3500 K node → XP-only ΔA_V +0.26), and the
+  bins were by the star's [Fe/H] / log g while `apply` uses the model's. Now unsmoothed,
+  binned by the best-fit model; per-node closure exact. New asset (tag `tc26438c9b`).
+- **Estimator**: high-S/N stars' posteriors sit on one grid node and the 0.1 A_V grid
+  samples the A_V–R_V valley as a zig-zag; `fit._refine_star` adds a fine local
+  (R_V, A_V) grid (0.025 × 0.01) around the best node of each model carrying the
+  posterior. Per-star R_V / A_V (and their errors, A_<band>) are now continuous.
+
+What remains is a linear, 1/A_V template residual of the cool nodes (dwarfs < 5100 K,
+giants < 4500 K read R_V 2.7–2.9 for 3.05; warm nodes 3.0–3.05), carried as a closure
+table in the corrections asset (`rv_closure_k`) that `measure_law` applies per star
+(`rv_raw` keeps the uncorrected median; `n_closure` counts the corrected stars).
+
+### Other
+- `dustline run … --refit` / `Sightline.run(refit=True)`: redo the fits and ensemble
+  products from the cached catalogs and XP spectra (no refetch).
+- `calib.aggregate(stat="mean")` option (clipped mean; not used — it did not change the
+  closure).
+- Examples rerun on the fixed grid: bulge R_V 2.73 ± 0.53 (was 2.76), …
+
+### Examples
 - `examples/ztf19abqmpti`: second SN Ia sightline (l 11°, b +24°, A_V ≈ 1): R_V = 3.44 ±
-  0.49 (MAD) from 2,186 stars with A_V ≥ 0.5, column 1.03 vs rescaled SFD 1.07. The
-  per-star R_V correlates with the fitted A_V and T_eff (3.1 → 4.1 across A_V bins at fixed
-  distance; cool stars 2.8, hot 3.5) — a fit coupling, not dust; systematic ±0.3.
+  0.49 (MAD) from 2,186 stars with A_V ≥ 0.5, column 1.03 vs rescaled SFD 1.07 (v0.6 grid;
+  rerun below).
 
 ## v0.6.0 — 2026-09-20
 

@@ -195,10 +195,16 @@ def node_edges(nodes: np.ndarray) -> np.ndarray:
 
 
 def aggregate(fit: pd.DataFrame, ratios: np.ndarray, xp_wave: np.ndarray, bands: list[str],
-              smooth_nm: float = 20.0, teff_edges: np.ndarray | None = None) -> dict:
-    """Per (T_eff, [Fe/H]) bin medians of the XP ratio spectra (lightly smoothed;
-    NOT renormalised, so that the XP and band corrections share the joint scale
-    of the calibration fit) and of the per-band offsets dm_<band>
+              smooth_nm: float = 0.0, teff_edges: np.ndarray | None = None,
+              stat: str = "median", clip: float = 3.0) -> dict:
+    """Per (T_eff, [Fe/H]) bin medians of the XP ratio spectra (unsmoothed by
+    default: the cool-template residuals have 10 nm structure at the TiO band
+    heads, common to every star of a node, and the median of >= 15 stars is
+    already at the 1 % level; a 20 nm sigma left a -24 % dip at 400 nm in the
+    3500 K node which a free A_V then read as extra reddening. smooth_nm > 0
+    applies a Gaussian of that sigma. NOT renormalised, so that the XP and band
+    corrections share the joint scale of the calibration fit) and of the
+    per-band offsets dm_<band>
     (observed - synthetic, mag).  Bins with < MIN_PER_BIN stars fall back to the
     T_eff bin over all [Fe/H], then to no correction."""
     edges = TEFF_EDGES if teff_edges is None else np.asarray(teff_edges, float)
@@ -206,17 +212,35 @@ def aggregate(fit: pd.DataFrame, ratios: np.ndarray, xp_wave: np.ndarray, bands:
     R = np.ones((nT, nZ, nG, len(xp_wave)))
     dm = np.zeros((nT, nZ, nG, len(bands)))
     n = np.zeros((nT, nZ, nG), int)
-    iT = np.clip(np.digitize(fit.teff_spec.values, edges) - 1, 0, nT - 1)
-    iZ = np.clip(np.digitize(fit.feh_spec.values, FEH_EDGES) - 1, 0, nZ - 1)
-    lg = fit.logg_spec.values.astype(float) if "logg_spec" in fit else np.full(len(fit), 4.5)
-    iG = np.where(np.nan_to_num(lg, nan=4.5) >= LOGG_MIN, 0, 1)
-    kern = np.exp(-0.5 * ((np.arange(-30, 31) * 2.0) / smooth_nm) ** 2)
-    kern /= kern.sum()
+    # bin by the calibrator's BEST-FIT MODEL (T_eff, [M/H], log g), which is how
+    # apply() looks the correction up for each model: binning by the star's own
+    # [Fe/H] mixed stars fitted with -0.5 and 0.0 templates (whose blue residuals
+    # differ by 30 % at 3500 K) into one median that fitted neither
+    t = fit.teff_best.values if "teff_best" in fit else fit.teff_spec.values
+    z = fit.mh_best.values if "mh_best" in fit else fit.feh_spec.values
+    lg = (fit.logg_best.values if "logg_best" in fit
+          else fit.logg_spec.values if "logg_spec" in fit else np.full(len(fit), 4.5))
+    iT = np.clip(np.digitize(t, edges) - 1, 0, nT - 1)
+    iZ = np.clip(np.digitize(z, FEH_EDGES) - 1, 0, nZ - 1)
+    iG = np.where(np.nan_to_num(lg.astype(float), nan=4.5) >= LOGG_MIN, 0, 1)
+    kern = np.exp(-0.5 * ((np.arange(-30, 31) * 2.0) / smooth_nm) ** 2) if smooth_nm > 0 else None
+    if kern is not None:
+        kern /= kern.sum()
 
     def med_ratio(m):
         r = np.nanmedian(ratios[m], axis=0)
+        if stat == "mean":
+            # sigma-clipped mean about the median: the fit is least squares, so the
+            # star-to-star residual it sees averages, and a skewed residual
+            # distribution biases the median-template fit (R_V -0.13 for cool dwarfs)
+            x = ratios[m]
+            mad = 1.4826 * np.nanmedian(np.abs(x - r[None, :]), axis=0)
+            x = np.where(np.abs(x - r[None, :]) <= clip * np.maximum(mad, 1e-3)[None, :], x, np.nan)
+            r = np.nanmean(x, axis=0)
         good = np.isfinite(r)
         r = np.interp(xp_wave, xp_wave[good], r[good])
+        if kern is None:
+            return r
         return np.convolve(np.pad(r, 30, mode="edge"), kern, mode="valid")
 
     for gcls in range(nG):
@@ -270,6 +294,23 @@ def tag(corr: dict | None) -> str:
     import hashlib
 
     return "tc" + hashlib.sha256(corr["ratio"].tobytes() + corr["band_dm"].tobytes()).hexdigest()[:8]
+
+
+def rv_closure(corr: dict | None, teff, logg) -> np.ndarray:
+    """k = A_V * (1/R_V_fit - 1/R_V_true) of the reddening-injection closure test
+    (tools/inject_reddening.py closure) for stars of the given fitted T_eff and
+    log g; zeros when the table has none.  ensemble.measure_law subtracts k/A_V
+    from 1/R_V per star."""
+    teff = np.asarray(teff, float)
+    if corr is None or "rv_closure_k" not in corr:
+        return np.zeros(len(teff))
+    k = corr["rv_closure_k"]
+    nT = len(corr["teff_edges"]) - 1
+    iT = np.clip(np.digitize(teff, corr["teff_edges"]) - 1, 0, nT - 1)
+    iG = np.minimum(np.where(np.asarray(logg, float) >= float(corr["logg_min"]), 0, 1), k.shape[1] - 1)
+    out = k[iT, iG]
+    out[~np.isfinite(teff)] = 0.0
+    return out
 
 
 def apply(corr: dict, meta: np.ndarray, m_xp: np.ndarray, xp_wave: np.ndarray,

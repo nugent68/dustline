@@ -54,9 +54,9 @@ ASSETS: dict[str, dict] = {
     # APOGEE x XP giants (T_eff/log g locked to ASPCAP), both dereddened with the
     # Edenhofer+2023 3D map (dustline.calib; tools/build_template_corrections.py).
     "template_corrections.npz": dict(
-        tag="v0.6.0",
-        sha256="158c8733a5b649025d03b91c449ce7047e8eb4afc74042ed7909c43ad5cda2a1",
-        size=190662),
+        tag="v0.7.0",
+        sha256=None,          # set at release
+        size=None),
 }
 
 

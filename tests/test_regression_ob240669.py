@@ -4,12 +4,14 @@ table (with its 2MASS join) of the cached sightline workspace as fixtures
 (skipped when that workspace is not in the local cache; tools/run_ob240669.py
 builds it).
 
-Pinned (dustline v0.6.0: UV-IR model cache with the empirical dwarf AND giant
-template corrections, tiled PS1 fetch with saturation cut, 2MASS, 9'):
-- law: R_V = 2.76 (median), MAD 0.50 (857 stars with A_V >= 2);
-- clump: E(J-Ks) 0.52, A_V column 3.41 +/- 0.64 at D_RC 6.1 kpc;
-- run: A_I 0.34 / 0.81 / 0.95 / 1.07 / 1.15 at 1 / 2 / 3 / 4 / 5 kpc, bridged to
-  1.96 beyond the clump (A_I/A_V = 0.575).
+Pinned (dustline v0.7.0: UV-IR model cache with the rebuilt dwarf AND giant
+template corrections, sub-grid (R_V, A_V) refinement, the injection closure
+correction of the law (raw median 2.73), tiled PS1 fetch with saturation cut,
+2MASS, 9'):
+- law: R_V = 2.80 (median), MAD 0.54 (883 stars with A_V >= 2);
+- clump: E(J-Ks) 0.52, A_V column 3.36 +/- 0.63 at D_RC 6.1 kpc;
+- run: A_I 0.36 / 0.81 / 0.92 / 1.06 / 1.21 at 1 / 2 / 3 / 4 / 5 kpc, bridged to
+  1.94 beyond the clump (A_I/A_V = 0.579).
 
 The corresponding figures are in tests/figures/ob240669/ (law_rv.png,
 extinction_run_I.png) for visual comparison when the numbers drift.
@@ -64,17 +66,18 @@ def anchor(field, law):
 
 
 def test_law_rv_regression(law):
-    assert law["n_stars"] == pytest.approx(857, abs=20)
-    assert law["rv"] == pytest.approx(2.76, abs=0.05)
-    assert law["rv_mad"] == pytest.approx(0.50, abs=0.05)
-    assert law["ratios_av"]["PS1_i"] == pytest.approx(0.617, abs=0.02)
-    assert law["ratios_av"]["2MASS_Ks"] == pytest.approx(0.096, abs=0.01)
+    assert law["n_stars"] == pytest.approx(883, abs=20)
+    assert law["rv"] == pytest.approx(2.80, abs=0.05)
+    assert law["rv_raw"] == pytest.approx(2.73, abs=0.05)
+    assert law["rv_mad"] == pytest.approx(0.54, abs=0.05)
+    assert law["ratios_av"]["PS1_i"] == pytest.approx(0.622, abs=0.02)
+    assert law["ratios_av"]["2MASS_Ks"] == pytest.approx(0.092, abs=0.01)
 
 
 def test_clump_anchor_regression(anchor):
     assert anchor is not None
     assert anchor["E_JK"] == pytest.approx(0.52, abs=0.03)
-    assert anchor["AV_column"] == pytest.approx(3.41, abs=0.15)
+    assert anchor["AV_column"] == pytest.approx(3.36, abs=0.15)
     assert anchor["D_RC"] == pytest.approx(6.1, abs=0.3)
 
 
@@ -82,8 +85,8 @@ def test_dust_run_regression(fit, law, anchor):
     from dustline.ensemble import band_ratio_at_rv, bridge_to_clump, dust_run
     run = bridge_to_clump(dust_run(fit), anchor)
     ratio = band_ratio_at_rv("I", law["rv"])
-    assert ratio == pytest.approx(0.575, abs=0.01)
-    ref = {1.0: 0.34, 2.0: 0.81, 3.0: 0.95, 4.0: 1.07, 5.0: 1.15, 8.0: 1.96, 12.0: 1.96}
+    assert ratio == pytest.approx(0.579, abs=0.01)
+    ref = {1.0: 0.36, 2.0: 0.81, 3.0: 0.92, 4.0: 1.06, 5.0: 1.21, 8.0: 1.94, 12.0: 1.94}
     for D, expected in ref.items():
         r = run[np.isclose(run.D_kpc, D)].iloc[0]
         assert r.AV_med * ratio == pytest.approx(expected, abs=0.03), D

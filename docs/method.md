@@ -90,10 +90,11 @@ The design that closes (`dustline.calib`, `tools/build_template_corrections.py`)
   100–250 pc star at |b| > 40° sits at z = 80–190 pc, behind most of a
   ~100 pc dust layer): each is dereddened with the Edenhofer+2023 3D map
   (median A_V 0.026, A_V = 2.8 E) before an A_V = 0 fit at its locked node.
-- **Corrections**: per grid node and [Fe/H] bin, the median XP obs/model ratio
-  spectrum (smoothed, not renormalised) and per-band offsets, multiplied into
-  the dwarf models (log g ≥ 3.5) of the fit grid (`template_corrections.npz`).
-  Giants are untouched.
+- **Corrections**: per grid node, [M/H] bin and log g class *of the best-fit
+  model*, the median XP obs/model ratio spectrum (unsmoothed, not renormalised)
+  and per-band offsets, multiplied into the models of the fit grid
+  (`template_corrections.npz`); the band extinctions stay those of the
+  uncorrected SED, so the band offsets hold at every A_V (v0.7.0 fixes).
 - **A_V grid**: 0.01 steps below 0.5 and down to −0.1, because with the lock a
   0.1 grid quantises the posterior and a grid starting at 0 biases every
   near-zero star positive.
@@ -117,6 +118,61 @@ the 3D map at A_V = 2.8 E; XP is ~0.03 mag too red in g−z against PS1 for fain
 red stars). PS1 mean-PSF magnitudes brighter than g 14.5 / r 15 / i 15 / z 14 /
 y 13 are saturated and now dropped everywhere. The bulge field is unaffected
 (R_V 2.80 ± 0.46 vs 2.84 ± 0.48). `DUSTLINE_TEMPLATE_CORR=none` disables.
+
+## Reddening-injection closure and the R_V systematics (v0.7.0)
+
+The two SN Ia sightlines showed the per-star R_V rising with the fitted A_V and
+T_eff (3.1 → 4.1 across A_V quartiles at fixed distance; cool stars 2.8, hot
+3.5). `tools/inject_reddening.py` measures this directly on the template
+calibrators: the map-dereddened DESI dwarfs and APOGEE giants get a known G23
+reddening (A_V = 1, R_V = 3.05 on the grid) in their XP spectra and photometry
+and are refitted exactly as a field is (T_eff free, log g / [Fe/H] priors,
+template corrections), with the parallax errors inflated to S/N 10 to mimic
+1–2 kpc field stars. What it found, in order:
+
+1. **A grid bug** (v0.5–v0.6): `build_grid` measured the band extinctions
+   against the *corrected* band fluxes, so the per-band template corrections
+   cancelled at every A_V ≠ 0 — a 0.03–0.05 mag NIR correction is a third of
+   A_Ks at A_V = 1, and the coolest dwarfs came back at the R_V grid floor
+   (2.31). Fixed; grids are rebuilt (cache key `b2`).
+2. **The correction table**: the σ = 20 nm smoothing of the median ratio
+   spectra erased the TiO-band-scale structure of the cool residuals (−24 % at
+   400 nm left in the 3500 K node, which a free A_V read as extra reddening:
+   XP-only ΔA_V +0.26), and the table was binned by the calibrator's own
+   [Fe/H] / log g while applied by the model's — at 3500 K the −0.5 and 0.0
+   templates differ by 30 % in the blue, so the mixed medians fitted neither.
+   Now unsmoothed and binned by the best-fit model; per-node closure is exact.
+3. **Grid quantisation**: for a high-S/N star the posterior is confined to one
+   node (0.25 in R_V, 0.1 in A_V above 0.5) and the 0.1 A_V grid samples the
+   diagonal A_V–R_V valley at discrete points (a zig-zag χ² profile), so the
+   posterior mean quantised to the nodes and every cool node's median sat at
+   exactly 2.80. `fit._refine_star` now evaluates a fine local (R_V, A_V) grid
+   (0.025 × 0.01) around the best node of every model carrying the posterior,
+   with the profiled scale and the radius prior; the R_V histogram is smooth.
+4. **The coupling** (giants, T_eff free): the fit trades +0.45 in R_V and +0.10
+   in A_V per +100 K of T_eff error; with T_eff locked the R_V–A_V correlation
+   remains — it is the tilt of the per-star error ellipse. Both are symmetric:
+   the ensemble median is unbiased by them, and splitting a field by *fitted*
+   T_eff selects on the error (the bulge's 3.8 vs 2.55 warm/cool split), so
+   no product does that.
+5. **What is left**: a template residual, linear (mirroring each star's XP
+   about its template mirrors the offset: 2.92 ↔ 3.17), scaling as 1/A_V
+   (Δ(1/R_V) = 0.060 / 0.029 / 0.018 at A_V 0.5 / 1 / 2), [Fe/H]-dependent
+   within the 0.5 dex model bins, and confined to the cool templates: dwarfs
+   < 5100 K read R_V 2.7–2.9 for 3.05 injected, giants < 4500 K 2.8, warmer
+   nodes 3.0–3.05 (ΔA_V −0.02 to −0.09, the K dwarfs also 67 K cool). A star
+   whose XP is replaced by its own template recovers 3.05 exactly.
+
+The residual is carried as a **closure table** in `template_corrections.npz`
+(`rv_closure_k[node, class]` = A_V·median(1/R_V_fit − 1/R_V_inj), `stage
+closure`): `ensemble.measure_law` subtracts k/A_V from each star's 1/R_V
+(`calib.rv_closure`), moves its band ratios along the law, and reports the
+uncorrected median as `rv_raw`. The correction is +0.03 in 1/R_V for the cool
+nodes (R_V 2.8 → 3.05 at A_V 1; half that at A_V 2) and < 0.01 for the warm
+ones; with the cool stars a quarter of a mid-latitude law sample it moves the
+field R_V by +0.05–0.1. Honest budget after it: ±0.05 from the closure
+(calibrators are solar-neighbourhood, [Fe/H] −0.5..+0.3), plus the
+NIR zero-point freeze ±0.05.
 
 ## Column mode (|b| > 30°)
 

@@ -90,7 +90,10 @@ def build_grid(ws: Workspace, bands: list[str], law: str = "g23",
     tag = "" if mh == MH_DEFAULT else "mh" + ",".join(f"{m:+.1f}" for m in mh)
     ctag = "" if models.cache_name() == "newera_full_cache.npz" else models.cache_tag()
     atag = "" if AV_GRID[0] == 0.0 and len(AV_GRID) == 81 else f"av{AV_GRID[0]:+.2f}:{len(AV_GRID)}"
-    key = hashlib.sha256(("|".join(bands) + law + tag + ctag + calib.tag(corr) + atag).encode()).hexdigest()[:10]
+    # "b2": band extinctions measured against the UNCORRECTED band fluxes (the v0.5/v0.6
+    # grids folded the band corrections into A_band, which cancelled them at A_V != 0)
+    key = hashlib.sha256(("|".join(bands) + law + tag + ctag + calib.tag(corr)
+                          + ("b2" if corr is not None else "") + atag).encode()).hexdigest()[:10]
     path = assets.cache_dir() / f"xp_grid_{law}_{key}.npz"
     if path.exists():
         d = np.load(path, allow_pickle=False)
@@ -108,11 +111,14 @@ def build_grid(ws: Workspace, bands: list[str], law: str = "g23",
     ext_full = np.stack([extinction.curve(wave, rv, law) for rv in RV_GRID])
     fl = flux * 100.0 * models.RD2                         # erg/s/cm2/A at C=1
     fnu0 = np.stack([ph.fnu(fl)[b] for b in bands], axis=1)
+    fnu0_raw = fnu0
     corrected = np.zeros(len(meta), bool)
     if corr is not None:
         m_xp, fnu0, corrected = calib.apply(corr, meta, m_xp, xp_wave, fnu0, bands)
         print(f"  grid: empirical template corrections applied to {corrected.sum()} dwarf models",
               flush=True)
+    # A_band is the band extinction of the (uncorrected) model SED; the corrected fnu0
+    # carries the template correction at every A_V
     A_band = np.zeros((len(RV_GRID), len(AV_GRID), len(meta), len(bands)), np.float32)
     for r, rv in enumerate(RV_GRID):
         for a, av in enumerate(AV_GRID):
@@ -120,7 +126,7 @@ def build_grid(ws: Workspace, bands: list[str], law: str = "g23",
                 continue
             fe = ph.fnu(fl * (10.0 ** (-0.4 * av * ext_full[r]))[None, :])
             A_band[r, a] = np.stack(
-                [-2.5 * np.log10(fe[b] / fnu0[:, k]) for k, b in enumerate(bands)], axis=1)
+                [-2.5 * np.log10(fe[b] / fnu0_raw[:, k]) for k, b in enumerate(bands)], axis=1)
         print(f"  grid: band extinction R_V {rv:.2f} ({time.time() - t0:.0f} s)", flush=True)
     # the MIST radius prior at each model's own metallicity (nearest MIST table:
     # -0.5/0/+0.5, so the metal-poor models use the -0.5 isochrones)
@@ -196,6 +202,105 @@ def spec_prior_chi2(meta: np.ndarray, spec: pd.DataFrame) -> tuple[np.ndarray, n
     return out, has
 
 
+def _marginal_estimate(x, p):
+    """Location and width of a 1-D marginal posterior on a grid: the vertex of the
+    parabola through the three -2 ln p values around the peak when the peak is
+    interior (a high-S/N star's posterior is confined to ONE grid node - 0.25 in
+    R_V, 0.1 in A_V above 0.5 - and the posterior mean then quantises to the
+    node, which biased the ensemble median of the calibrators by up to a step),
+    else the posterior mean and std."""
+    m = (x * p).sum()
+    sd = np.sqrt(max((x * x * p).sum() - m * m, 0.0))
+    k = int(np.argmax(p))
+    if 0 < k < len(x) - 1 and p[k] > 0:
+        y = -2.0 * np.log(np.maximum(p[k - 1:k + 2], 1e-300))
+        xs = x[k - 1:k + 2]
+        # parabola y = a (x - x0)^2 + c through three points (uneven spacing allowed)
+        d1, d2 = xs[1] - xs[0], xs[2] - xs[1]
+        s1, s2 = (y[1] - y[0]) / d1, (y[2] - y[1]) / d2
+        a = (s2 - s1) / (d1 + d2)
+        if a > 0:
+            x0 = 0.5 * (xs[0] + xs[1]) - s1 / (2.0 * a)
+            if xs[0] <= x0 <= xs[2]:
+                # curvature error, floored at the grid-quantisation spread; keep the
+                # posterior std when the posterior is broad (several nodes)
+                sig = np.sqrt(1.0 / a)
+                return float(x0), float(max(sig, sd) if sd < 0.75 * min(d1, d2) else sd)
+    return float(m), float(sd)
+
+
+REFINE_DRV, REFINE_NRV = 0.30, 25      # local fine grid: R_V +/- 0.30 in 0.025 steps
+REFINE_DAV, REFINE_NAV = 0.12, 25      #                  A_V +/- 0.12 in 0.01 steps
+
+
+def _refine(grid, k, flux, err, phot_f, phot_w, plx, plx_err, use_prior):
+    """Continuous (R_V, A_V) at the best model of one star: chi2 on a fine local
+    grid around the best node, with the scale C profiled and the radius prior
+    as in _fit_batch.  The coarse grid (0.25 in R_V, 0.1 in A_V above 0.5)
+    samples the diagonal A_V-R_V valley of a high-S/N star at discrete points
+    (a zig-zag profile), so its minimum and the posterior mean built on it are
+    quantisation noise there.  Returns (rv, rv_err, av, av_err, chi2_min)."""
+    r0, a0, m = k
+    rv_c, av_c = grid["rv"][r0], grid["av"][a0]
+    rvs = np.clip(rv_c + np.linspace(-REFINE_DRV, REFINE_DRV, REFINE_NRV), grid["rv"][0], grid["rv"][-1])
+    avs = np.clip(av_c + np.linspace(-REFINE_DAV, REFINE_DAV, REFINE_NAV), grid["av"][0], grid["av"][-1])
+    # extinction curve at each fine R_V: linear in 1/R_V between the grid curves
+    inv = 1.0 / grid["rv"]
+    order = np.argsort(inv)
+    ext = np.stack([np.array([np.interp(1.0 / rv, inv[order], grid["ext_xp"][order, j])
+                              for j in range(grid["ext_xp"].shape[1])]) for rv in rvs])
+    # band extinctions: bilinear in (R_V, A_V) from the coarse A_band of this model
+    Ab = grid["A_band"][:, :, m, :].astype(np.float64)
+    ir = np.clip(np.searchsorted(grid["rv"], rvs) - 1, 0, len(grid["rv"]) - 2)
+    fr = (rvs - grid["rv"][ir]) / (grid["rv"][ir + 1] - grid["rv"][ir])
+    ia = np.clip(np.searchsorted(grid["av"], avs) - 1, 0, len(grid["av"]) - 2)
+    fa = (avs - grid["av"][ia]) / (grid["av"][ia + 1] - grid["av"][ia])
+    A_r = Ab[ir] * (1 - fr)[:, None, None] + Ab[ir + 1] * fr[:, None, None]        # (nr, NA, nb)
+    A_ra = A_r[:, ia] * (1 - fa)[None, :, None] + A_r[:, ia + 1] * fa[None, :, None]  # (nr, na, nb)
+    w = 1.0 / err ** 2
+    wf = w * flux
+    sdd = (w * flux ** 2).sum() / XP_SCALE + (phot_w * phot_f ** 2).sum()
+    mx = grid["m_xp"][m].astype(np.float64)
+    mod = mx[None, None, :] * 10.0 ** (-0.4 * avs[None, :, None] * ext[:, None, :])   # (nr, na, nw)
+    A = (mod @ wf) / XP_SCALE
+    B = (mod * mod) @ w / XP_SCALE
+    fnu = grid["fnu0"][m][None, None, :] * 10.0 ** (-0.4 * A_ra)
+    A = A + fnu @ (phot_w * phot_f)
+    B = B + (fnu * fnu) @ phot_w
+    C = A / B
+    chi2 = sdd - A * A / B
+    if use_prior:
+        logR = 0.5 * np.log10(np.maximum(C, 1e-30)) + np.log10(1.0 / plx)
+        sig = np.sqrt(grid["rprior"][m, 1] ** 2 + (0.4343 * plx_err / plx) ** 2)
+        chi2 = chi2 + ((logR - grid["rprior"][m, 0]) / sig) ** 2
+    return rvs, avs, chi2
+
+
+def _refine_star(grid, t, spec_m, flux, err, phot_f, phot_w, plx, plx_err, use_prior,
+                 cover: float = 0.95, max_models: int = 12):
+    """Refined (rv, rv_err, av, av_err) of one star, marginalised over the models
+    that carry `cover` of the coarse posterior (each refined about its own best
+    node; spec_m is the per-model spectroscopic prior, constant over R_V, A_V)."""
+    L = np.exp(-0.5 * (t - t.min()))
+    pm = L.sum(axis=(0, 1))
+    order = np.argsort(pm)[::-1]
+    keep = order[:max(1, int(np.searchsorted(np.cumsum(pm[order]) / pm.sum(), cover) + 1))][:max_models]
+    pts_r, pts_a, pts_c = [], [], []
+    for m in keep:
+        k = np.unravel_index(np.argmin(t[:, :, m]), t[:, :, m].shape)
+        rvs, avs, c2 = _refine(grid, (k[0], k[1], int(m)), flux, err, phot_f, phot_w, plx, plx_err, use_prior)
+        pts_r.append(np.repeat(rvs, len(avs)))
+        pts_a.append(np.tile(avs, len(rvs)))
+        pts_c.append((c2 + spec_m[m]).ravel())
+    r, a, c = np.concatenate(pts_r), np.concatenate(pts_a), np.concatenate(pts_c)
+    w = np.exp(-0.5 * (c - c.min()))
+    w /= w.sum()
+    rm, am = (r * w).sum(), (a * w).sum()
+    rs = np.sqrt(max((r * r * w).sum() - rm * rm, 0.0))
+    as_ = np.sqrt(max((a * a * w).sum() - am * am, 0.0))
+    return float(rm), float(rs), float(am), float(as_)
+
+
 def _summarize(grid, chi2, chi2_prior, C, bands):
     """Per-star best-fit + posterior summaries from the chi2 cubes."""
     tot = chi2 + chi2_prior
@@ -218,8 +323,8 @@ def _summarize(grid, chi2, chi2_prior, C, bands):
         tm, ts = mstd(teff, pr)
         gm, gs = mstd(logg, pr)
         zm, zs = mstd(mh, pr)
-        am, as_ = mstd(grid["av"], pav)
-        rm, rs = mstd(grid["rv"], prv)
+        am, as_ = _marginal_estimate(grid["av"], pav)
+        rm, rs = _marginal_estimate(grid["rv"], prv)
         Ab = np.einsum("ram,ramb->b", L, grid["A_band"])
         Ab2 = np.einsum("ram,ramb->b", L, grid["A_band"] ** 2)
         Abs = np.sqrt(np.maximum(Ab2 - Ab ** 2, 0.0))
@@ -323,9 +428,38 @@ def fit_stars(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str],
             outside = (grid["meta"][:, 2] < MH_FREE_RANGE[0]) | (grid["meta"][:, 2] > MH_FREE_RANGE[1])
             chi2_spec[np.ix_(outside, ~has_feh)] = MH_PENALTY
             chi2_prior += chi2_spec[None, None, :, :]
+            spec_m = chi2_spec
         else:
             has_spec = np.zeros(len(gs), bool)
+            spec_m = np.zeros((len(grid["meta"]), len(gs)))
         df = _summarize(grid, chi2, chi2_prior, C, bands)
+        # sub-grid refinement where the coarse posterior is confined to a node
+        drv = np.diff(grid["rv"]).min() if len(grid["rv"]) > 1 else 0.0
+        dav = np.diff(grid["av"]).max() if len(grid["av"]) > 1 else 0.0
+        refined = np.zeros(len(df), bool)
+        if drv > 0 and dav > 0:
+            for s in range(len(df)):
+                if df.rv_err.iat[s] < drv or df.av_err.iat[s] < dav:
+                    t = chi2[..., s] + chi2_prior[..., s]
+                    rm, rs, am, as_ = _refine_star(grid, t, spec_m[:, s], flux[s], err[s], phot_f[s],
+                                                   phot_w[s], plx_fit[s], plxe_fit[s], bool(good[s]))
+                    df.loc[s, ["rv", "rv_err", "av", "av_err"]] = [rm, max(rs, 0.02), am, max(as_, 0.005)]
+                    refined[s] = True
+        df["refined"] = refined
+        if refined.any():
+            # band extinctions at the refined (R_V, A_V) of the best model (bilinear)
+            for s in np.where(refined)[0]:
+                m = int(df.imodel.iat[s])
+                rv_s, av_s = df.rv.iat[s], df.av.iat[s]
+                ir = int(np.clip(np.searchsorted(grid["rv"], rv_s) - 1, 0, len(grid["rv"]) - 2))
+                ia = int(np.clip(np.searchsorted(grid["av"], av_s) - 1, 0, len(grid["av"]) - 2))
+                fr = (rv_s - grid["rv"][ir]) / (grid["rv"][ir + 1] - grid["rv"][ir])
+                fa = (av_s - grid["av"][ia]) / (grid["av"][ia + 1] - grid["av"][ia])
+                Ab = grid["A_band"][:, :, m, :].astype(np.float64)
+                A_s = ((Ab[ir, ia] * (1 - fr) + Ab[ir + 1, ia] * fr) * (1 - fa)
+                       + (Ab[ir, ia + 1] * (1 - fr) + Ab[ir + 1, ia + 1] * fr) * fa)
+                for j, b in enumerate(bands):
+                    df.loc[s, f"A_{b}"] = A_s[j]
         df.insert(0, "source_id", gs.source_id.values)
         df["n_xp"] = np.isfinite(err).sum(axis=1)
         df["plx_used"] = good

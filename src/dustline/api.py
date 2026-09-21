@@ -197,16 +197,25 @@ class Sightline:
             config["template_corr"] = calib.tag(calib.load())
         self.ws = Workspace(self.ra, self.dec, self.radius_arcmin, config)
 
-    def run(self, force: bool = False, chunk: int = 200) -> ExtinctionResult:
+    FIT_PRODUCTS = ("xp_stars.csv", "phot_offsets.json", "result.json", "dust_run_av.csv")
+
+    def run(self, force: bool = False, chunk: int = 200, refit: bool = False) -> ExtinctionResult:
         """The full pipeline (each stage cached; the XP fetch is resumable).
 
         First run per sightline: hours (Gaia XP fetch dominates). After: instant.
+        refit: redo the per-star fits and the ensemble products from the cached
+        catalogs and XP spectra (after a model-grid or code change); force also
+        refetches everything.
         """
         from . import bands as bands_mod
         from . import fit as fit_mod
 
         result_path = self.ws.path("result.json")
         run_path = self.ws.path("dust_run_av.csv")
+        if refit and not force:
+            for name in self.FIT_PRODUCTS:
+                if self.ws.has(name):
+                    self.ws.path(name).unlink()
         if result_path.exists() and run_path.exists() and not force:
             law = json.loads(result_path.read_text())
             return ExtinctionResult(self.ws, law, pd.read_csv(run_path), self.plan)

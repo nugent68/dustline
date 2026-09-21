@@ -4,7 +4,7 @@ when absent; `dustline run 150.12 2.21 --radius 30` builds it in ~25 min).
 
 Pinned (dustline v0.5.0/v0.6.0: UV-IR cache, empirical template corrections, T_eff locked
 to the BP-RP locus, PS1 + 2MASS + WISE + GALEX, 30', DESI log g/[Fe/H], R_V fixed 3.05):
-- 592 XP stars; F/G column A_V 0.027 +/- 0.005 (MAD 0.050, N 128); K/M stars 0.026
+- 592 XP stars; F/G column A_V 0.029 +/- 0.004 (MAD 0.052, N 132); K/M stars 0.039 (v0.7.0)
   (the two agree - the K-dwarf systematic is gone); G-trend 0.01/0.03/0.03/0.05.
 """
 
@@ -53,8 +53,8 @@ def test_lock_and_priors(fit):
 def test_column_regression(fit):
     from dustline.ensemble import foreground_column
     c = foreground_column(fit)
-    assert c["clean"]["n"] == pytest.approx(128, abs=10)
-    assert c["clean"]["av"] == pytest.approx(0.027, abs=0.02)
+    assert c["clean"]["n"] == pytest.approx(132, abs=10)
+    assert c["clean"]["av"] == pytest.approx(0.029, abs=0.02)
     assert c["clean"]["av_mad"] < 0.07
     assert abs(c["teff_cool"]["av"] - c["clean"]["av"]) < 0.02   # cool and hot stars agree
     assert c["by_gmag"]["16.5-18"]["av"] < 0.08                  # faint-end excess < 0.05
