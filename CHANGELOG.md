@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `examples/ztf19abqmpti`: second SN Ia sightline (l 11°, b +24°, A_V ≈ 1): R_V = 3.44 ±
+  0.49 (MAD) from 2,186 stars with A_V ≥ 0.5, column 1.03 vs rescaled SFD 1.07. The
+  per-star R_V correlates with the fitted A_V and T_eff (3.1 → 4.1 across A_V bins at fixed
+  distance; cool stars 2.8, hot 3.5) — a fit coupling, not dust; systematic ±0.3.
+
 ## v0.6.0 — 2026-09-20
 
 ### Added
