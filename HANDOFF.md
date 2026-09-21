@@ -119,7 +119,7 @@ solar-[M/H] templates, no corrections, no closure, the 0.25/0.1 grid — everyth
 changed. A package run is both a regression of the package on the DECaPS/VVV/clump path
 (only exercised by the bulge example so far) and an updated deliverable.
 
-**Target**: RA 267.86642, Dec −33.13517 (l 357.1°, b −4.0°). `footprint.plan` gives
+**Target**: RA 267.86642, Dec −33.13517 (l 357.0°, b −3.2°). `footprint.plan` gives
 `optical=decaps, nir=vvv, in_bulge_window=True, apogee=True, spectro=none` (no DESI here).
 There is **no XP cache for 0095 on this machine** (the research repo's `data/` only holds
 OB240669); the Gaia fetch is the cost: the research run used 5′ (2,995 XP stars ≈ 1.5 h);
