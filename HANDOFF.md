@@ -1,5 +1,8 @@
 # dustline — HANDOFF (state at v0.8.0, 2026-09-22)
 
+**2026-09-22 (0095 rerun on v0.8.0): see §6 — R_V 3.17 ± 0.25, prior 4.39 kpc; the XP
+cache IS on this Mac (the v0.7.1 workspaces seed any new tag).**
+
 **2026-09-21 evening (0095 session, this Mac `/Users/nugent/claude/dustline-pkg`; venv python
 3.14):** §6 DONE — `examples/ob170095` (README with the prototype comparison), `tests/
 test_regression_ob170095.py`, `tools/prior_profile.py` (package → declens prior inputs),
@@ -156,41 +159,31 @@ budget (±0.05 closure, ±0.05 NIR zero points), not the answers.
    Folding the other estimators in is the next improvement for bulge sightlines (v0.7.1).
 7. GALEX adds nothing at A_V < 0.1 and drops out where R_V is measurable; WISE is neutral.
 
-## 6. Task for the next agent: 0095 on the v0.8.0 corrections
+## 6. DONE (2026-09-22): 0095 rerun on the v0.8.0 corrections
 
-`examples/ob170095` (OGLE-2017-BLG-0095, RA 267.86642, Dec −33.13517, l 357.0°, b −3.2°, 5′)
-was delivered in v0.7.1 — README, `tests/test_regression_ob170095.py`, `tools/prior_profile.py`,
-and the declens source-distance prior `P_SEDdust_XP` 4.43 kpc [3.35, 6.31] — but on the
-**v0.7.0 corrections (`tc26438c9b`)**, before the label-locked per-model table, so its
-regression test skips on this stack.
+`examples/ob170095` was rerun on `tca602f749` (workspace
+`ra+0267.86642_dec-033.13517_r5_b51f4ceb`). **The 0095 XP cache WAS on this Mac after all**
+— the v0.7.1 workspaces `_9fb8f4f9` / `_074da6f4` are intact and `seed_from_sibling` copied
+`gaia.csv`, `xp_continuous_raw.csv`, `xp_sampled.npz`, `decaps_gaia.csv`, `vvv_gaia.csv`
+automatically, so it was ~1 h of fits, no refetch (the note about a stopped run and a
+deleted workspace refers to the *other* machine). Results (README, `law.json`,
+`prior/`, figures, test all updated):
 
-**What to do**: rerun it on `tca602f749`. **The user is doing this from another machine
-(2026-09-22), which holds the 0095 XP cache** — do not start it here without asking. This
-Mac has no 0095 data despite the v0.7.1 note above (a run started on 2026-09-22 was stopped
-at 1,800/2,995 spectra and its workspace deleted at the user's request) and nothing to seed
-from, so here it would be a full fetch: 2,995 XP stars ≈ 90 min, then ~1 h of fits over 3
-passes. On the machine with the cache the new corrections tag seeds its workspace from the
-sibling, so it is a refit. **Never delete the workspace** on the machine that does the run.
+| | v0.7.0 (`tc26438c9b`) | v0.8.0 (`tca602f749`) |
+|---|---|---|
+| R_V | 3.16 ± 0.23 [raw 3.07] | **3.17 ± 0.25 [raw 3.14]** |
+| law stars | 326 | 333 |
+| clump | E(J−Ks) 0.44, A_V 2.71 ± 0.44 at 8.4 kpc | unchanged |
+| zero points (g, r, i, z, Y) | −0.078, −0.092, −0.033, −0.041, −0.051 | −0.062, −0.089, −0.035, −0.044, −0.055 |
+| A_I at 1/2/3/4/5 kpc | 0.67 / 1.23 / 1.32 / 1.40 / 1.55 | 0.76 / 1.23 / 1.42 / 1.46 / 1.71 |
+| declens prior P_SEDdust_XP | 4.43 [3.35, 6.31] | **4.39 [3.41, 6.33]** |
 
-```bash
-source .venv/bin/activate
-nohup dustline run 267.86642 -33.13517 --radius 5 --plx-inflate 1.7 --filter I \
-      -o examples/ob170095/extinction_I.csv --plots examples/ob170095 \
-      > /tmp/ob170095_v08.log 2>&1 &
-python tools/prior_profile.py 267.86642 -33.13517 --radius 5 --plx-inflate 1.7 \
-      -o examples/ob170095/prior
-```
+The closure term is a third of what it was (+0.04 vs +0.10) and the answer is unchanged
+within 0.01 in R_V — the same v0.6→v0.8 stability the other three examples show. The
+in-field parallax calibration is unchanged (×1.65 robust / ×1.88 std from 1,657 clump
+stars), so ×1.7 stands. The run rose by ≤ 0.15 mag at 3–5 kpc (inside the 16–84 % band,
+21–70 stars per bin there).
 
-Then copy the workspace `result.json` to `examples/ob170095/law.json`, update the README
-numbers (and its "Numbers are from the v0.7.0 stack" note), re-pin
-`tests/test_regression_ob170095.py`, and rerun the in-field parallax calibration
-(`law.json["plx_inflation_clump"]`) in case ×1.7 is no longer the right inflation.
-
-**Expect**: R_V within ~0.05 of 3.16 (the v0.6→v0.8 field-to-field stability, §4) with a
-smaller closure term (+0.10 → ~+0.04 for cool giants); the clump anchor and the zero points
-should barely move. The prototype comparison to hold against is in the README: R_V 3.15 ±
-0.23, clump A_i 1.86 ± 0.19 at 8.3 kpc, prior 4.41 kpc [3.38, 5.90]. Port nothing back to
-the declens repo (`~/claude/dustline`) without the user's say-so.
-
-**Also worth doing**: §5.6, the multi-estimator clump column — 0095 is the sightline where
-the single-colour anchor is demonstrably 0.19 mag low, so it is the natural test case.
+**Next**: §5.6, the multi-estimator clump column — 0095 remains the natural test case
+(single-colour anchor A_i 1.67 vs the prototype's five-estimator 1.86 ± 0.19; on this
+sightline it is what sets the prior's 68 % upper bound).

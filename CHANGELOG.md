@@ -49,6 +49,14 @@ spectroscopic prior (so column mode is unaffected — its template A_V zero poin
   (v0.6) / −50 K (v0.7) to −25 K against ASPCAP.
 - `examples/cosmos` (column mode): F/G **0.023 ± 0.006** (MAD 0.046, N 130), K/M 0.031
   — 0.036 below SFD, now demonstrably not a template A_V zero point (above).
+- `examples/ob170095` (bulge, DECaPS + VVV, 5', `--plx-inflate 1.7`; rerun 2026-09-22 on
+  `tca602f749`, HANDOFF §6 closed): R_V **3.17 ± 0.25** from 333 stars [raw 3.14 — the
+  closure term fell from +0.10 to +0.04]; clump anchor unchanged (E(J−Ks) 0.44, A_V
+  2.71 ± 0.44 at 8.4 kpc); zero points DECaPS g −0.062, r −0.089, i −0.035, z −0.044,
+  Y −0.055, VVV J −0.016, H +0.005, Ks +0.037; A_I 0.76 / 1.23 / 1.42 / 1.46 / 1.71 at
+  1–5 kpc. Declens source-distance prior `P_SEDdust_XP` 4.39 kpc [3.41, 6.33] against
+  4.43 [3.35, 6.31] on v0.7.0 — the whole corrections overhaul moved this field's answer
+  by 0.01 in R_V and 0.04 kpc in the prior. Test re-pinned.
 
 The field R_V is stable to ±0.05 across the whole v0.6 → v0.8 calibration overhaul
 (bulge 2.76 → 2.80 → 2.82; ZTF19 3.44 → 3.48 → 3.50; ZTF20 3.55 → 3.50 → 3.46), which

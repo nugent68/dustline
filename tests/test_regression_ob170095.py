@@ -4,13 +4,15 @@ field of the cached sightline workspace as fixtures (skipped when that workspace
 is not in the local cache; `dustline run 267.86642 -33.13517 --radius 5 --plx-inflate 1.7`
 builds it in ~2 h, the XP fetch dominating).
 
-Pinned (dustline v0.7.1: v0.7.0 stack + parallax errors x1.7 and parallax x
-photometric distance posteriors; DECaPS grizY + VVV JHKs, 5'):
-- law: R_V = 3.16 (median), MAD 0.23 (326 stars with A_V >= 2); raw 3.07;
-- clump: E(J-Ks) 0.44, A_V column 2.71 +/- 0.44 at D_RC 8.4 kpc;
+Pinned (dustline v0.8.0: label-locked per-model template corrections `tca602f749`,
+parallax errors x1.7 and parallax x photometric distance posteriors; DECaPS grizY +
+VVV JHKs, 5'):
+- law: R_V = 3.17 (median), MAD 0.25 (333 stars with A_V >= 2); raw 3.14 (the closure
+  term fell from +0.10 on v0.7.0 to +0.04);
+- clump: E(J-Ks) 0.44, A_V column 2.71 +/- 0.44 at D_RC 8.4 kpc (unchanged);
 - in-field parallax-error underestimate x1.65 (robust) from the clump window;
-- run: A_I 0.67 / 1.23 / 1.32 / 1.40 / 1.55 at 1 / 2 / 3 / 4 / 5 kpc, bridged to
-  1.66 beyond the clump (A_I/A_V = 0.609).
+- run: A_I 0.76 / 1.23 / 1.42 / 1.46 / 1.71 at 1 / 2 / 3 / 4 / 5 kpc, bridged to
+  1.68 at 8 kpc and 1.64 behind the clump (A_I/A_V = 0.610).
 """
 
 import numpy as np
@@ -64,11 +66,11 @@ def anchor(field, law):
 
 
 def test_law_rv_regression(law):
-    assert law["n_stars"] == pytest.approx(326, abs=15)
-    assert law["rv"] == pytest.approx(3.16, abs=0.05)
-    assert law["rv_raw"] == pytest.approx(3.07, abs=0.05)
-    assert law["rv_mad"] == pytest.approx(0.23, abs=0.04)
-    assert law["ratios_av"]["DECam_i"] == pytest.approx(0.615, abs=0.02)
+    assert law["n_stars"] == pytest.approx(333, abs=15)
+    assert law["rv"] == pytest.approx(3.17, abs=0.05)
+    assert law["rv_raw"] == pytest.approx(3.14, abs=0.05)
+    assert law["rv_mad"] == pytest.approx(0.25, abs=0.04)
+    assert law["ratios_av"]["DECam_i"] == pytest.approx(0.616, abs=0.02)
     assert law["ratios_av"]["VISTA_Ks"] == pytest.approx(0.111, abs=0.01)
 
 
@@ -91,9 +93,9 @@ def test_dust_run_regression(fit, law, anchor):
     assert (fit.plx_inflate == 1.7).all()
     run = bridge_to_clump(dust_run(fit), anchor)
     ratio = band_ratio_at_rv("I", law["rv"])
-    assert ratio == pytest.approx(0.609, abs=0.01)
-    ref = {1.0: 0.67, 2.0: 1.23, 3.0: 1.32, 4.0: 1.40, 5.0: 1.55, 8.0: 1.66, 12.0: 1.66}
+    assert ratio == pytest.approx(0.610, abs=0.01)
+    ref = {1.0: 0.76, 2.0: 1.23, 3.0: 1.42, 4.0: 1.46, 5.0: 1.71, 8.0: 1.68, 12.0: 1.64}
     for D, expected in ref.items():
         r = run[np.isclose(run.D_kpc, D)].iloc[0]
         assert r.AV_med * ratio == pytest.approx(expected, abs=0.04), D
-        assert bool(r.bridged) == (D > 5.2), D
+        assert bool(r.bridged) == (D > 5.6), D
