@@ -161,18 +161,21 @@ budget (±0.05 closure, ±0.05 NIR zero points), not the answers.
 `examples/ob170095` (OGLE-2017-BLG-0095, RA 267.86642, Dec −33.13517, l 357.0°, b −3.2°, 5′)
 was delivered in v0.7.1 — README, `tests/test_regression_ob170095.py`, `tools/prior_profile.py`,
 and the declens source-distance prior `P_SEDdust_XP` 4.43 kpc [3.35, 6.31] — but on the
-**v0.7.0 corrections (`tc26438c9b`)**, before the label-locked per-model table. The 0095
-workspace in the cache is therefore keyed to the old tag and its regression test skips.
+**v0.7.0 corrections (`tc26438c9b`)**, before the label-locked per-model table, so its
+regression test skips on this stack.
 
-**What to do**: rerun it on `tca602f749`. The XP spectra are already on this Mac
-(`~/.cache/dustline/sightlines/ra+0267.86642_dec-033.13517_r5_*`) and a new corrections tag
-auto-seeds its workspace from the sibling, so this is a refit (~25 min for 2,995 stars), not
-a 1.5 h fetch. **Never delete either workspace.**
+**What to do**: rerun it on `tca602f749` (in progress, 2026-09-22). Note that the 0095 XP
+cache is **not** on this Mac despite the v0.7.1 note above — `~/.cache/dustline/sightlines/`
+holds only the config stub `ra+0267.86642_dec-033.13517_r5_b51f4ceb` (written by the
+regression test at the new tag, empty), with no sibling to seed from. So this is a full
+fetch: 2,995 XP stars ≈ 90 min (resumable), then ~1 h of fits over 3 passes. **Never delete
+the workspace.**
 
 ```bash
 source .venv/bin/activate
-dustline run 267.86642 -33.13517 --radius 5 --plx-inflate 1.7 --filter I --refit \
-      -o examples/ob170095/extinction_I.csv --plots examples/ob170095
+nohup dustline run 267.86642 -33.13517 --radius 5 --plx-inflate 1.7 --filter I \
+      -o examples/ob170095/extinction_I.csv --plots examples/ob170095 \
+      > /tmp/ob170095_v08.log 2>&1 &
 python tools/prior_profile.py 267.86642 -33.13517 --radius 5 --plx-inflate 1.7 \
       -o examples/ob170095/prior
 ```
