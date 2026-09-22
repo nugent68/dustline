@@ -1,4 +1,4 @@
-# dustline — HANDOFF (state at v0.7.1, 2026-09-21 evening)
+# dustline — HANDOFF (state at v0.8.0, 2026-09-22)
 
 **2026-09-21 evening (0095 session, this Mac `/Users/nugent/claude/dustline-pkg`; venv python
 3.14):** §6 DONE — `examples/ob170095` (README with the prototype comparison), `tests/
@@ -13,9 +13,8 @@ estimator (0.03 mag of clump colour = 0.1 in A_i); folding the i−Ks / g−i / 
 `clump.py` is the next improvement for bulge sightlines. The 0095 XP cache is now on this Mac
 (`~/.cache/dustline/sightlines/ra+0267.86642_dec-033.13517_r5_*`).
 
-
 For a fresh agent session in this repo (`/Users/nugent/claude/dustline-pkg`, GitHub
-`nugent68/dustline`, public, tag `v0.7.0`, HEAD `0d28677`). Self-contained; the science
+`nugent68/dustline`, public, tag `v0.8.0`). Self-contained; the science
 history is in `docs/method.md` and `CHANGELOG.md`, the research prototype (per-sightline
 scripts, the OB170095 results this package must reproduce) is `~/claude/dustline`
 (`HANDOFF_dustline.md` there).
@@ -33,18 +32,21 @@ PHOENIX NewEra templates × survey photometry:
 Per-star fit: brute-force grid (T_eff, log g, [M/H]) × A_V (136 values, 0.01 steps below
 0.5) × R_V (2.3–5.55, 0.25) with the flux scale profiled, MIST radius prior from the
 parallax, DESI DR1 / APOGEE DR17 log g–[Fe/H] priors where available, empirical template
-corrections, and (v0.7.0) a fine local (R_V, A_V) refinement around the coarse optimum.
+corrections (per-model since v0.8.0), and a fine local (R_V, A_V) refinement around the
+coarse optimum.
 Photometric zero points are iterated (NIR frozen after pass 1; GALEX per T_eff bin).
 
 ## 2. Environment and caches
 
 - venv: `.venv` (python 3.14; `source .venv/bin/activate`; `dustline` CLI on PATH). Tests:
-  `python -m pytest -q -m "not network"` (49 pass; the two regression tests use the cached
-  bulge and COSMOS workspaces).
+  `python -m pytest -q -m "not network"` (49 pass at v0.8.0; the two regression tests use
+  the cached bulge and COSMOS workspaces — a new corrections tag makes them skip until the
+  fields are rerun and the pins updated).
 - Assets (fetched on first use into `~/.cache/dustline/`, sha-verified, registry in
   `src/dustline/assets.py`): `newera_full_cache.npz` + `mist_v1.2_basic.npz` (v0.1.0),
   `newera_uvir_cache.npz` (v0.4.0, 214 MB, 900 Å–6 µm, the default), `template_corrections.npz`
-  (v0.7.0, tag `tc26438c9b`, includes the R_V closure table).
+  (v0.8.0, corrections tag `tca602f749`, 123 per-model entries + coarse bins + the R_V
+  closure table).
 - Grid products: `~/.cache/dustline/xp_grid_g23_<key>.npz`, keyed by bands + law + [M/H]
   axis + model cache + corrections tag (+ `b2` since the band-correction fix). A new key
   rebuilds in ~7 min (4366 models) or ~1 min (solar-only, 730 models).
@@ -76,7 +78,7 @@ Photometric zero points are iterated (NIR frozen after pass 1; GALEX per T_eff b
 | `api.py` | `Sightline` (options: radius, photometry, prefer_deep, spectro_priors, freeze_offsets, uv, mir, min_av, desi_teff), `run(force, refit)`, `ExtinctionResult` (`.rv`, `.extinction(band)`, `.column`, `.plots()`, `.save()`) |
 | `cli.py` | `dustline run RA DEC [--radius] [--min-av] [--no-spectro] [--freeze-offsets] [--no-uv] [--no-mir] [--desi-teff] [--ref-av] [-o] [--plots DIR] [--force \| --refit]`, `dustline fetch-assets` |
 | `fit.py` | `build_grid`, `_fit_batch` (χ² cubes), `spec_prior_chi2`, `_summarize`, `_refine`/`_refine_star` (sub-grid), `fit_stars`, `measure_offsets`, `uv_offsets_by_teff`, `run_fit_with_offsets` (passes; `teff_from_colour` in column mode) |
-| `calib.py` | template corrections: calibrator selection (DESI dwarfs D<250 pc; APOGEE giants D<1.2 kpc), `teff_from_bprp` (Mamajek locus + [Fe/H] term), `map_extinction` (Edenhofer+2023 via dustmaps), `deredden`, `ratio_spectrum`, `aggregate` (bins by the **best-fit model**, unsmoothed), `load`/`tag`/`apply`, `rv_closure` |
+| `calib.py` | template corrections: calibrator selection (DESI dwarfs D<250 pc; APOGEE giants D<1.2 kpc), `teff_from_bprp` (Mamajek locus + [Fe/H] term), `map_extinction` (Edenhofer+2023 via dustmaps), `deredden`, `ratio_spectrum`, `aggregate` (per-model entries where >= 6 calibrators share a model, else coarse bins by the **best-fit model**, unsmoothed), `load`/`tag`/`apply` (`MODEL_FALLBACK` = nearest covered model within 150 K / 0.5 dex / 0.5 dex), `rv_closure`, `LABEL_LOCK_SIGMA` |
 | `ensemble.py` | `law_sample`, `measure_law` (closure-corrected; `rv_raw`), `default_law`, `dust_run`, `bridge_to_clump`, `foreground_column`, `band_ratio_at_rv` |
 | `clump.py` | red-clump anchor in (J−Ks, Ks) |
 | `models.py`, `extinction.py`, `filters.py`, `bands.py`, `plotting.py`, `cache.py` | NewEra cache + XP LSF + synthetic photometry; G23/F99 curves; 26 packaged filter curves (`data/filters`); band assembly; figures; `Workspace` |
@@ -88,48 +90,72 @@ Tools: `tools/build_template_corrections.py` (stages `pull`/`fit`/`build` for `d
 `rv_closure_k` into the corrections file), `tools/run_ob240669.py` (regenerates the bulge
 example from the research repo's XP cache), `tools/fetch_svo_filters.py`.
 
-## 4. v0.7.0 in one paragraph (details: docs/method.md "Reddening-injection closure")
+## 4. v0.7.0–v0.8.0 in two paragraphs (details: docs/method.md)
 
-The injection test (calibrators reddened with a known law, refitted as a field) measured the
-T_eff–A_V–R_V coupling (+0.45 R_V, +0.10 A_V per +100 K, symmetric → the ensemble median is
-unbiased, but **never split a field's R_V by fitted T_eff**) and fixed: (1) `build_grid`
-cancelled the per-band template corrections at every A_V ≠ 0; (2) the corrections table was
-smoothed at σ 20 nm and binned by the star's [Fe/H]/log g instead of the model's; (3) high-S/N
-posteriors quantised to the grid. A linear 1/A_V residual of the cool templates remains
-(dwarfs < 5100 K, giants < 4500 K read R_V 2.7–2.9 for 3.05) and is applied per star as the
-closure table. Budget after it: ±0.05 closure, ±0.05 NIR zero points.
+**v0.7.0 — the injection test.** Calibrators reddened with a known law and refitted as a
+field measured the T_eff–A_V–R_V coupling (+0.45 R_V, +0.10 A_V per +100 K, symmetric →
+the ensemble median is unbiased, but **never split a field's R_V by fitted T_eff**) and
+fixed: (1) `build_grid` cancelled the per-band template corrections at every A_V ≠ 0;
+(2) the corrections table was smoothed at σ 20 nm and binned by the star's [Fe/H]/log g
+instead of the model's; (3) high-S/N posteriors quantised to the grid (`_refine_star`).
+A linear 1/A_V residual of the cool templates remained and is applied per star as the
+closure table (`rv_closure_k`, `rv_raw` keeps the uncorrected median).
 
-Results on this stack (closure-corrected, raw in brackets):
+**v0.8.0 — the K-dwarf T_eff offset, closed as an A_V systematic.** Injection controls at
+A_V = 0 and 1, T_eff free and locked, corrections on and off (table in `docs/method.md`):
+locking T_eff removes the whole A_V bias but leaves R_V at 2.91 for 3.05 injected, so
+**the cool-template R_V residual and the T_eff offset are independent and the coupling is
+not a bias term in the R_V budget**. The offset survives at A_V = 0 (−25 K), is halved
+rather than caused by the corrections (−67 K with them off), is not node binning or
+coverage, and is the degeneracy floor of the 0.5 dex [M/H] grid — removing it needs a
+finer [M/H] axis or a (T_eff, [M/H]) sub-grid refinement, not a better table. It is
+carried as a systematic on **A_V only** (−0.05 at A_V 1, −0.02 at A_V 0, ≤ 0.02 when a
+spectroscopic prior pins the star). Calibration changes: log g and [Fe/H] are locked as
+well as T_eff when the calibrators are fitted, and the table carries 123 per-model
+corrections preferred to the coarse bins. Injection closure on the new table: dwarfs
+R_V 2.93 (ΔA_V −0.026), giants 2.98 (−0.014), against 2.7–2.9 before; the closure k
+roughly halved.
+
+Results on the v0.8.0 stack (closure-corrected, raw in brackets):
 
 | field | mode | result | N | example |
 |---|---|---|---|---|
-| OB240669 (l −5°, b −3°, bulge) | law + clump | R_V 2.80 ± 0.54 [2.73]; clump A_V 3.36 at 6.1 kpc | 883 | `examples/ob240669` |
-| ZTF19abqmpti (l 11°, b +24°) | law | R_V 3.48 ± 0.48 [3.37]; column 1.07 | 2,228 | `examples/ztf19abqmpti` |
-| ZTF20abgaovd (l 16°, b +27°) | law | R_V 3.50 ± 0.84 [3.32]; column 0.57 | 1,394 | `examples/ztf20abgaovd` |
-| COSMOS (b +42°) | column | F/G 0.029 ± 0.004; K/M 0.039; SFD 0.059 | 132 | `examples/cosmos` |
+| OB240669 (l 13°, b −2°, bulge) | law + clump | R_V 2.82 ± 0.50 [2.79]; clump A_V 3.34 at 6.1 kpc | 905 | `examples/ob240669` |
+| ZTF19abqmpti (l 11°, b +24°) | law | R_V 3.50 ± 0.45 [3.44]; column 1.11 | 2,229 | `examples/ztf19abqmpti` |
+| ZTF20abgaovd (l 16°, b +27°) | law | R_V 3.46 ± 0.79 [3.35]; column 0.60 | 1,559 | `examples/ztf20abgaovd` |
+| COSMOS (b +42°) | column | F/G 0.023 ± 0.006; K/M 0.031; SFD 0.059 | 130 | `examples/cosmos` |
+
+Field R_V is stable to ±0.05 across v0.6 → v0.8; the calibration work moved the error
+budget (±0.05 closure, ±0.05 NIR zero points), not the answers.
 
 ## 5. Open issues (in priority order)
 
-1. **K-dwarf T_eff offset**: 4500–5000 K dwarfs come out ~67 K too cool with A_V −0.10 in
-   the injection test (independent of the parallax weight), and ZTF20's APOGEE dwarfs read
-   −108 K. Candidates: the Mamajek-locus T_eff of the calibration vs the T_eff the XP shape
-   + MIST radius prefer at the node (the corrected node templates are then "labelled" hot),
-   the [M/H] bin mixing (0.5 dex model steps vs the −0.4 bin edge), the log g prior (DESI
-   dwarfs fit at log g 5.5, the grid edge). Tools: `inject_reddening.py … locked` vs `free`,
-   the per-node ΔT_eff of `inject_dwarfs_av1.00_rv3.05_free_plx10.csv` in the dwarf
-   calibration workspace, ZTF20's `apogee_check`.
+1. **The 0.5 dex [M/H] grid step** is the remaining floor on A_V for free-parameter cool
+   dwarfs (v0.8.0, §4): −0.05 at A_V 1 for 4500–5100 K. The fix is a finer [M/H] axis (the
+   UV–IR cache holds −2..+0.5 in 0.5 steps only) or a (T_eff, [M/H]) sub-grid refinement
+   like `_refine` does in (R_V, A_V). It does **not** affect R_V — that was the v0.8.0
+   result — so it is a column-mode / A_V-budget item, not an R_V one.
 2. Closure calibrators are solar-neighbourhood ([Fe/H] −0.5..+0.3, [M/H]-dependent
    residual); bulge/thick-disk fields extrapolate.
-3. Free giant fits sit 50–120 K below ASPCAP in reddened fields (no luminosity lever).
-4. Column-mode absolute zero point ±0.03 (XP ~0.03 mag too red in g−z for faint red stars).
-5. GALEX adds nothing at A_V < 0.1 and drops out where R_V is measurable; WISE is neutral.
+3. Free giant fits sit 25–90 K below ASPCAP in reddened fields (no luminosity lever;
+   was 50–120 K before the label-locked corrections).
+4. Column-mode absolute zero point ±0.03 (XP ~0.03 mag too red in g−z for faint red stars);
+   COSMOS now reads 0.036 *below* SFD and the injection control rules out a template
+   zero point, so the remaining suspects are the maps and the calibrator population.
+5. **PS1 band corrections are essentially uncalibrated**: the nearby bright calibrators hit
+   the PS1 saturation cut, so `dm_PS1_i` rests on 73 dwarfs, `dm_PS1_z` on 71 and
+   `dm_PS1_g` on 603, against 2,386 for 2MASS — `dm_PS1_*` is 0 at most nodes. Fields
+   measure their own PS1 offsets (which is why this is not a blocker), but the injection
+   closure inherits no PS1 information. A fainter calibrator sample (DESI reaches G 19)
+   would fix it.
+6. GALEX adds nothing at A_V < 0.1 and drops out where R_V is measurable; WISE is neutral.
 
-## 6. Task for the next agent: OGLE-2017-BLG-0095 on the v0.7.0 stack
+## 6. Task for the next agent: OGLE-2017-BLG-0095 on the v0.8.0 stack
 
 **Why**: 0095 is the sightline the method was built for (research prototype, 2026-09-17:
 `~/claude/dustline/results/ob170095/`, `HANDOFF_dustline.md` §0). Its deliverable
 (`P_SEDdust_XP`, the source-distance prior sent to Natasha) rests on a 2500–25000 Å cache,
-solar-[M/H] templates, no corrections, no closure, the 0.25/0.1 grid — everything v0.7.0
+solar-[M/H] templates, no corrections, no closure, the 0.25/0.1 grid — everything v0.7/v0.8
 changed. A package run is both a regression of the package on the DECaPS/VVV/clump path
 (only exercised by the bulge example so far) and an updated deliverable.
 
@@ -154,7 +180,7 @@ Data Lab fallback engages by itself; if the DECaPS/VVV fetch fails, `catalogs/de
 - law: R_V 3.15 (MAD 0.23, 195 stars with A_V ≥ 2); ratios for a 6000 K source at
   R_V 3.15: A_g/A_i 1.885, A_r 1.335, A_z 0.767, A_Y 0.663, A_J 0.442, A_H 0.282,
   A_Ks 0.179 (`xp_law.json`). Expect the v0.7 R_V to differ by up to ~0.1–0.2 (band
-  corrections at A_V > 0, closure +0.05–0.1 for the cool giants).
+  corrections at A_V > 0, closure +0.03–0.1 for the cool giants).
 - run: A_i 0.59 / 1.19 / 1.33 / 1.39 / 1.81 at 0.5–1 / 1–1.5 / 1.5–2 / 2–3 / 3–5 kpc
   (`xp_dust_run.csv`, columns `D_kpc, AV_target(=A_i), …`), bridged to the clump column
   **A_i 1.90 ± 0.06 ± 0.19 at 8.0 kpc** (`clump_anchor.json`: 650 stars within 3′,

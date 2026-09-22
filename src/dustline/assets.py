@@ -49,15 +49,16 @@ ASSETS: dict[str, dict] = {
         tag="v0.4.0",
         sha256="2e03d4f0c101e848faf9738132ea8db3af2f0d05afbf81dff1e2c38f2c6c8918",
         size=214_319_883),
-    # Empirical template corrections per T_eff grid node, [M/H] bin and log g class of
-    # the best-fit model: 2,451 nearby DESI x XP dwarfs (T_eff locked to the BP-RP locus)
+    # Empirical template corrections per best-fit model (123 exact (T_eff, log g, [M/H])
+    # entries since v0.8.0) and, as a fallback, per T_eff grid node, [M/H] bin and log g
+    # class: 2,451 nearby DESI x XP dwarfs (T_eff locked to the BP-RP locus)
     # and 1,482 nearby APOGEE x XP giants (T_eff/log g locked to ASPCAP), both dereddened
     # with the Edenhofer+2023 3D map (dustline.calib; tools/build_template_corrections.py),
     # plus the R_V closure table of the reddening-injection test (tools/inject_reddening.py).
     "template_corrections.npz": dict(
-        tag="v0.7.0",
-        sha256="8b6b43c66fd9e51d4372877034c3c5956168cca4246274e0404591d7d899c7fd",
-        size=181461),
+        tag="v0.8.0",
+        sha256="fc675b8fdabe7889fa58586d0b7bd2338b5cb2996727a5ad85e8ec2fecefb80e",
+        size=494_172),   # corrections tag tca602f749 (v0.7.0: 8b6b43c6..., 181461 B)
 }
 
 

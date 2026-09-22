@@ -28,10 +28,19 @@ FEH_EDGES = np.array([-3.0, -0.4, 1.0])      # metal-poor / solar-ish
 LOGG_MIN = 3.5                                # dwarf / giant boundary of the log g classes
 LOGG_CLASSES = ((3.5, 6.5), (0.0, 3.5))       # 0: dwarfs (BP-RP-locus T_eff), 1: giants (ASPCAP T_eff)
 MIN_PER_BIN = 15
+MODEL_FALLBACK = (150.0, 0.5, 0.5)
+# (K, dex, dex): a model without its own per-model correction takes the nearest covered
+# model within this box rather than the coarse (T_eff, [M/H] < / > -0.4, dwarf/giant) bin,
+# which mixes log g 4.5-5.5 and [M/H] 0/+0.5 at one node: bin-corrected models pull the
+# free fit -71 K, model-corrected ones only -22 K.
 TEFF_PRIOR_SIGMA = 1.0    # K: the calibration fits (A_V = 0) AND the science fits LOCK T_eff
                           # to the grid point nearest the DESI label (grid step 100 K), so the
                           # corrections are measured where they are applied (25-100 K priors let
                           # the A_V = 0 fits drift 150-200 K cooler: the XP chi2 gain wins)
+LABEL_LOCK_SIGMA = 0.01   # dex: the calibration fits lock log g and [Fe/H] as well, to the
+                          # grid values nearest the DESI / ASPCAP labels (v0.8.0) - with only
+                          # T_eff locked the solar K dwarfs were calibrated on log g 5.5 /
+                          # [M/H] +0.5 models that the science fit's soft priors abandon
 _cache: dict = {}
 
 
@@ -196,7 +205,7 @@ def node_edges(nodes: np.ndarray) -> np.ndarray:
 
 def aggregate(fit: pd.DataFrame, ratios: np.ndarray, xp_wave: np.ndarray, bands: list[str],
               smooth_nm: float = 0.0, teff_edges: np.ndarray | None = None,
-              stat: str = "median", clip: float = 3.0) -> dict:
+              stat: str = "median", clip: float = 3.0, min_per_model: int = 6) -> dict:
     """Per (T_eff, [Fe/H]) bin medians of the XP ratio spectra (unsmoothed by
     default: the cool-template residuals have 10 nm structure at the TiO band
     heads, common to every star of a node, and the median of >= 15 stars is
@@ -256,9 +265,28 @@ def aggregate(fit: pd.DataFrame, ratios: np.ndarray, xp_wave: np.ndarray, bands:
                 for j, b in enumerate(bands):
                     d = fit.loc[m, f"dm_{b}"].dropna()
                     dm[t, z, gcls, j] = float(d.median()) if len(d) >= MIN_PER_BIN else 0.0
-    return dict(teff_edges=edges, feh_edges=FEH_EDGES, xp_wave=xp_wave, ratio=R,
-                bands=np.array(bands), band_dm=dm, n=n, logg_min=LOGG_MIN,
-                logg_classes=np.array(LOGG_CLASSES))
+    out = dict(teff_edges=edges, feh_edges=FEH_EDGES, xp_wave=xp_wave, ratio=R,
+               bands=np.array(bands), band_dm=dm, n=n, logg_min=LOGG_MIN,
+               logg_classes=np.array(LOGG_CLASSES))
+    # per-MODEL corrections (exact T_eff, log g, [M/H] of the best-fit model) where a
+    # model has >= min_per_model calibrators: the coarse bins mix models (log g 5.0 and
+    # 5.5, [M/H] 0 and +0.5 at the K-dwarf nodes) whose spectra differ, so their shared
+    # median fitted neither and a free fit slid to the neighbouring node (-70 K)
+    if all(c in fit for c in ("teff_best", "logg_best", "mh_best")):
+        keys = np.stack([fit.teff_best.values, fit.logg_best.values, fit.mh_best.values], axis=1)
+        uniq, inv, cnt = np.unique(keys, axis=0, return_inverse=True, return_counts=True)
+        use = cnt >= min_per_model
+        mk, mr, mdm, mn = [], [], [], []
+        for j in np.where(use)[0]:
+            m = inv.ravel() == j
+            mk.append(uniq[j])
+            mr.append(med_ratio(m))
+            mn.append(int(m.sum()))
+            mdm.append([float(fit.loc[m, f"dm_{b}"].dropna().median())
+                        if fit.loc[m, f"dm_{b}"].notna().sum() >= min_per_model else 0.0 for b in bands])
+        out.update(model_key=np.array(mk, float).reshape(-1, 3), model_ratio=np.array(mr).reshape(-1, len(xp_wave)),
+                   model_band_dm=np.array(mdm, float).reshape(-1, len(bands)), model_n=np.array(mn, int))
+    return out
 
 
 def load(path=None) -> dict | None:
@@ -293,7 +321,12 @@ def tag(corr: dict | None) -> str:
         return ""
     import hashlib
 
-    return "tc" + hashlib.sha256(corr["ratio"].tobytes() + corr["band_dm"].tobytes()).hexdigest()[:8]
+    extra = (corr["model_ratio"].tobytes() + corr["model_band_dm"].tobytes()
+             + corr["model_key"].tobytes() if "model_ratio" in corr else b"")
+    # MODEL_FALLBACK changes which models the per-model entries reach, i.e. the grid, so
+    # it belongs in the key even though it is code rather than table content
+    extra += repr(MODEL_FALLBACK).encode()
+    return "tc" + hashlib.sha256(corr["ratio"].tobytes() + corr["band_dm"].tobytes() + extra).hexdigest()[:8]
 
 
 def rv_closure(corr: dict | None, teff, logg) -> np.ndarray:
@@ -337,4 +370,27 @@ def apply(corr: dict, meta: np.ndarray, m_xp: np.ndarray, xp_wave: np.ndarray,
     for j, b in enumerate(bands):
         if b in cb:
             F[use, j] = 10.0 ** (-0.4 * band_dm[iT[use], iZ[use], iG[use], cb.index(b)])
+    if "model_key" in corr and len(corr["model_key"]):
+        # exact per-model corrections override the bin values where they exist; a model
+        # without its own entry takes the NEAREST covered model within MODEL_FALLBACK
+        # instead of the coarse bin (which mixes log g 4.5-5.5 and [M/H] 0/+0.5 at one
+        # node, so its shared median fits neither and a free fit slides to the cooler
+        # node: -71 K for bin-corrected models against -22 K for model-corrected ones)
+        mk = np.asarray(corr["model_key"], float)
+        dT, dG, dZ = MODEL_FALLBACK
+        key = {tuple(np.round(k, 3)): i for i, k in enumerate(mk)}
+        for i, (t, g, z) in enumerate(meta):
+            j = key.get((round(float(t), 3), round(float(g), 3), round(float(z), 3)))
+            if j is None:
+                d = np.stack([np.abs(mk[:, 0] - t) / dT, np.abs(mk[:, 1] - g) / dG,
+                              np.abs(mk[:, 2] - z) / dZ])
+                near = (d <= 1.0).all(axis=0)
+                if not near.any():
+                    continue
+                j = int(np.argmin(np.where(near, (d ** 2).sum(axis=0), np.inf)))
+            R[i] = np.interp(xp_wave, corr["xp_wave"], corr["model_ratio"][j]).astype(np.float32)
+            for jb, b in enumerate(bands):
+                if b in cb:
+                    F[i, jb] = 10.0 ** (-0.4 * corr["model_band_dm"][j, cb.index(b)])
+            use[i] = True
     return m_xp * R, fnu0 * F, use

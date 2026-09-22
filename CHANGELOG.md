@@ -1,5 +1,57 @@
 # Changelog
 
+## v0.8.0 — 2026-09-22
+
+### The K-dwarf T_eff offset: located, and shown not to touch R_V
+v0.7.0's open item (4500–5100 K dwarfs fitting ~67 K cool with A_V −0.10) was chased with
+injection controls at A_V = 0 as well as 1, with T_eff free and locked, and with the
+corrections off (table in docs/method.md). Results: locking T_eff removes the whole A_V
+bias but leaves R_V at 2.91 for 3.05 injected, so **the cool-template R_V residual is
+independent of the T_eff offset and the ±0.45 R_V/100 K coupling is not a bias term** in
+the R_V budget; the offset exists at A_V = 0 (−25 K), is halved rather than caused by the
+corrections (−67 K with them off), and is the degeneracy floor of the 0.5 dex [M/H] grid
+(stars landing on a more metal-rich model than their true [Fe/H] come back unbiased).
+It is now carried as a systematic on **A_V only**: −0.05 at A_V = 1, −0.02 at A_V = 0 for
+free-parameter K dwarfs, ≤ 0.02 for warm dwarfs and for any star pinned by a
+spectroscopic prior (so column mode is unaffected — its template A_V zero point is
+−0.007, and the COSMOS–SFD difference is not a template artefact).
+
+### Calibration
+- `build_template_corrections.py fit` locks **log g and [Fe/H]** to the grid values
+  nearest the DESI / ASPCAP labels as well as T_eff (`calib.LABEL_LOCK_SIGMA`). With only
+  T_eff locked, solar K dwarfs were calibrated on log g 5.5 / [M/H] +0.5 models that the
+  science fit's soft priors then abandoned; the K-dwarf nodes now sit on log g 5.0 alone.
+- `calib.aggregate` writes **per-model corrections** (exact T_eff, log g, [M/H] of the
+  best-fit model) wherever ≥ 6 calibrators share a model — 123 entries over 3,474
+  calibrators — and `apply` prefers them to the coarse (T_eff, [M/H] ≶ −0.4,
+  dwarf/giant) bins, which mix log g 4.5–5.5 and [M/H] 0/+0.5 at a single node. Models
+  without their own entry take the nearest covered model within `MODEL_FALLBACK`
+  (150 K, 0.5 dex, 0.5 dex) instead of the coarse bin. `calib.tag` now hashes
+  `model_key` and `MODEL_FALLBACK` too.
+- New corrections asset, tag `tca602f749`. Injection closure on it: dwarfs R_V 2.93
+  (ΔA_V −0.026, ΔT_eff −14 K over 2,439 stars), giants 2.98 (−0.014, −11 K over 1,482) —
+  against 2.7–2.9 for the cool nodes on v0.7.0. The rebuilt closure table is
+  correspondingly smaller: k = +0.017 (dwarfs) / +0.012 (giants) for the cool nodes
+  against +0.029 before.
+- Asset `template_corrections.npz` re-released (v0.8.0 tag, 494 kB, sha in
+  `assets.py`); the two regression tests are re-pinned to the new stack.
+
+### Examples (all four rerun with `--refit`; closure-corrected R_V, raw in brackets)
+- `examples/ob240669` (bulge, A_V 2–5): R_V **2.82 ± 0.50** from 905 stars [2.79];
+  clump column 3.34 ± 0.62 at 6.1 kpc; A_I 0.37 / 0.81 / 0.95 / 1.12 / 1.26 at
+  1–5 kpc, bridged to 1.94.
+- `examples/ztf19abqmpti` (l 11°, b +24°, A_V ≈ 1): R_V **3.50 ± 0.45** from 2,229
+  stars [3.44]; column 1.11 ± 0.26 beyond 1 kpc against the rescaled SFD 1.07.
+- `examples/ztf20abgaovd` (l 16°, b +27°, A_V ≈ 0.6): R_V **3.46 ± 0.79** from 1,559
+  stars [3.35]; column 0.60 ± 0.19, map 0.55. Its APOGEE giants moved from −119 K
+  (v0.6) / −50 K (v0.7) to −25 K against ASPCAP.
+- `examples/cosmos` (column mode): F/G **0.023 ± 0.006** (MAD 0.046, N 130), K/M 0.031
+  — 0.036 below SFD, now demonstrably not a template A_V zero point (above).
+
+The field R_V is stable to ±0.05 across the whole v0.6 → v0.8 calibration overhaul
+(bulge 2.76 → 2.80 → 2.82; ZTF19 3.44 → 3.48 → 3.50; ZTF20 3.55 → 3.50 → 3.46), which
+is the point of the exercise: the closure work moved the *error budget*, not the answer.
+
 ## v0.7.1 — 2026-09-21
 
 ### Crowded-field parallaxes (`--plx-inflate`, posterior distances)

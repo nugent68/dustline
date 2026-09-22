@@ -62,7 +62,7 @@ res = dustline.Sightline(ra, dec, photometry=phot).run()
 
 - **R_V** — median and star-to-star scatter of the well-reddened (A_V ≥ 2, or `--min-av`)
   parallax stars, closure-corrected per star (the reddening-injection test on the
-  template calibrators, v0.7.0: cool templates read R_V ~0.25 low at A_V 1; `rv_raw`
+  template calibrators: cool templates read R_V ~0.1–0.25 low at A_V 1; `rv_raw`
   keeps the uncorrected value), with systematic notes (closure ±0.05, NIR zero-point
   sensitivity ±0.05, blue-end XP caveats).
 - **A_X(D)** — running median and 16/84 % envelope of the per-star extinctions of the
@@ -92,9 +92,10 @@ and star-to-star MAD, the same for the cool stars, the stars with / without a
 spectroscopic prior and per G-magnitude bin, and a coarse map of the column across the
 field (`res.column`, `column_av.png`). Meant for extragalactic fields, as an independent
 check of SFD/Planck-type foregrounds. On the COSMOS test field
-([examples/cosmos](examples/cosmos)) the F/G column is 0.027 ± 0.005 (MAD 0.050) and the
-K/M dwarfs agree (0.026); SFD gives 0.05–0.06. The absolute zero point carries a ±0.03
-systematic from the template calibration.
+([examples/cosmos](examples/cosmos)) the F/G column is 0.023 ± 0.006 (MAD 0.046) and the
+K/M dwarfs agree to 0.008 (0.031); SFD gives 0.05–0.06. The absolute zero point carries a
+±0.03 systematic from the template calibration — the v0.8.0 injection controls show it is
+not a template A_V zero point (−0.007 for pinned F/G stars).
 
 **T_eff lock and template corrections (v0.5.0).** In column mode every dwarf's T_eff is
 locked to the empirical (Mamajek) main-sequence locus of its dereddened Gaia BP−RP, with a
@@ -133,11 +134,12 @@ start to pay at A_V ≳ 0.3, where the UV signal (≈ 0.9 mag) dwarfs the model 
 ## Example
 
 [examples/ob240669](examples/ob240669) is a complete run on the OGLE-2024-BLG-0669
-sightline (l 13.2°, b −1.6°; PS1 + 2MASS): R_V = 2.76 ± 0.50 from 857 stars, the A_I(D)
-table bridged to the red-clump column (A_V = 3.41 at 6.1 kpc), the law JSON and the two
-figures. [examples/cosmos](examples/cosmos) is the high-latitude column-mode run and
-[examples/ztf20abgaovd](examples/ztf20abgaovd) a mid-latitude SN Ia sightline with a
-measured R_V = 3.55 ± 0.85 at A_V ≈ 0.5.
+sightline (l 13.2°, b −1.6°; PS1 + 2MASS): R_V = 2.82 ± 0.50 from 905 stars, the A_I(D)
+table bridged to the red-clump column (A_V = 3.34 at 6.1 kpc), the law JSON and the two
+figures. [examples/cosmos](examples/cosmos) is the high-latitude column-mode run, and
+[examples/ztf19abqmpti](examples/ztf19abqmpti) (R_V = 3.50 ± 0.45 from 2,229 stars at
+A_V ≈ 1) and [examples/ztf20abgaovd](examples/ztf20abgaovd) (3.46 ± 0.79 at A_V ≈ 0.6) are
+mid-latitude SN Ia sightlines with a measured R_V.
 
 ![extinction run](examples/ob240669/extinction_run_I.png)
 
@@ -149,8 +151,11 @@ It measured the fit's T_eff–A_V–R_V coupling (+0.45 in R_V and +0.10 in A_V 
 T_eff error — symmetric, so the ensemble median is unbiased, but never split a field by
 *fitted* T_eff), caught a grid bug and two flaws in the correction table (v0.7.0), and
 left a per-node closure table that `measure_law` applies. Warm templates (dwarfs ≥ 5100 K,
-giants ≥ 4500 K) close to 0.05 in R_V; cool ones needed the correction. See
-[docs/method.md](docs/method.md).
+giants ≥ 4500 K) close to 0.05 in R_V; cool ones needed the correction. The v0.8.0 controls
+(A_V = 0 as well as 1, T_eff locked as well as free) traced the residual K-dwarf T_eff
+offset to the 0.5 dex [M/H] grid step and showed it biases **A_V only** — locking T_eff
+removes the A_V bias and leaves R_V unchanged — so the coupling is not a bias term in the
+R_V budget. See [docs/method.md](docs/method.md).
 
 ## Caveats
 

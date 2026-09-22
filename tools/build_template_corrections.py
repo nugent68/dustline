@@ -123,10 +123,13 @@ def stage_fit(ws: Workspace, sample: str = "dwarfs") -> None:
     if sample == "dwarfs":
         # the T_eff coordinate: the empirical dwarf T_eff of the dereddened BP-RP, locked
         stars["teff_spec"] = calib.teff_from_bprp(stars.bp_rp.values, av_map, stars.feh_spec.values)
-    else:
-        # giants: ASPCAP T_eff (IRFM scale) and log g, locked
-        stars["logg_spec_err"] = 0.1
+    # giants keep the ASPCAP T_eff (IRFM scale) already in teff_spec
     stars["teff_spec_err"] = calib.TEFF_PRIOR_SIGMA
+    # log g and [Fe/H] locked too (nearest grid values): with only T_eff locked the fit
+    # reddened the K-dwarf nodes with log g 5.5 / [M/H] +0.5 models instead, which the
+    # science fit's soft priors then abandon for the cooler node (-70 K, A_V -0.1)
+    stars["logg_spec_err"] = calib.LABEL_LOCK_SIGMA
+    stars["feh_spec_err"] = calib.LABEL_LOCK_SIGMA
     ok = np.isfinite(stars.teff_spec)
     print(f"colour T_eff for {int(ok.sum())} of {len(stars)} calibrators; "
           f"median colour-DESI = {np.nanmedian(stars.teff_spec - stars.teff_desi):+.0f} K")

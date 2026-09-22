@@ -174,6 +174,47 @@ field R_V by +0.05–0.1. Honest budget after it: ±0.05 from the closure
 (calibrators are solar-neighbourhood, [Fe/H] −0.5..+0.3), plus the
 NIR zero-point freeze ±0.05.
 
+### The K-dwarf T_eff offset, and why it does not touch R_V (v0.8.0)
+
+The one open item of that list — 4500–5100 K dwarfs coming back too cool, with
+A_V low — was chased with the same injection ladder, at A_V = 0 as well as 1 and
+with T_eff locked as well as free. The controls separate it cleanly from the R_V
+residual:
+
+| control (dwarfs 4500–5100 K) | ΔT_eff | ΔA_V | R_V (3.05 injected) |
+|---|---|---|---|
+| A_V = 1, T_eff free | −32 K | −0.048 | 2.92 |
+| A_V = 1, T_eff locked | +1 K | −0.009 | **2.91** |
+| A_V = 0, T_eff free | −25 K | −0.024 | — |
+| A_V = 0, T_eff locked | +1 K | +0.017 | — |
+| A_V = 0, free, corrections **off** | −67 K | +0.002 | — |
+| A_V = 0, locked, 5500–6500 K | −4 K | −0.007 | — |
+
+Four things follow. (i) **R_V does not care**: locking T_eff removes the whole
+A_V bias but leaves R_V at 2.91, so the cool-template R_V residual of item 5 is
+a genuine shape error and the ±0.45 R_V/100 K coupling is a per-star
+error-ellipse tilt that does *not* transport a median T_eff bias into the median
+R_V. The coupling is therefore not a bias term in the R_V budget. (ii) The
+offset is **not created by reddening** (it is already −25 K at A_V = 0) and is
+**not caused by the corrections**, which halve it (−67 K uncorrected → −25 K).
+(iii) It is **not node binning** (the calibrators' labels sit 1.4 K from their
+nodes) and not coverage: extending the per-model corrections (`min_per_model`
+12 → 6 plus the nearest-covered-model fallback `MODEL_FALLBACK`, 84 → 123
+entries over 3,474 calibrators) moved it only −36 → −32 K. (iv) It is the
+**degeneracy floor of the 0.5 dex [M/H] grid**: stars whose fit lands on a model
+more metal-rich than their true [Fe/H] come back unbiased (ΔT −7 K, ΔA_V −0.011,
+R_V 3.00) while those on the matched model pay in T_eff (−52 K, −0.069, 2.87) —
+the residual is absorbed along a joint (T_eff, [M/H], A_V) direction, whichever
+way a given star slides. Removing it needs a finer [M/H] axis or a sub-grid
+refinement in (T_eff, [M/H]) like `_refine` does in (R_V, A_V), not a better
+correction table.
+
+So it is carried as a **systematic on A_V, not on R_V**: −0.05 at A_V = 1 and
+−0.02 at A_V = 0 for 4500–5100 K dwarfs with T_eff free, ≤ 0.02 for warm dwarfs
+and for any star whose parameters are pinned by a spectroscopic prior. Column
+mode is the pinned case (DESI priors, F/G stars): its template A_V zero point is
+−0.007, so the COSMOS–SFD difference is not a template artefact.
+
 ## Column mode (|b| > 30°)
 
 No A_V ≥ 2 stars, so R_V is not measurable: G23 at R_V = 3.1 is assumed (and
@@ -187,11 +228,15 @@ of the field. What the COSMOS test (examples/cosmos, SFD A_V ≈ 0.05) showed:
 - Without DESI priors the F/G fits run ~155 K hot and absorb it as +0.08 mag of
   A_V (the T_eff–A_V degeneracy at R ≈ 50); with the priors the F/G column is
   0.086 ± 0.006 (MAD 0.048) instead of 0.170 ± 0.011 (MAD 0.105).
-- The residual ~0.03–0.04 mag above SFD for the DESI-anchored F/G stars (the
-  brightest, G < 14, give 0.04) is the method's floor at low A_V, set by the
-  XP/NewEra residuals once T_eff is pinned. The zero-point offsets converged at
-  |Δ| ≤ 0.016 mag, so the screen / zero-point degeneracy (`freeze_offsets`
-  control) is not what sets it.
+- Those numbers are from v0.3; the band-correction fix of v0.7.0 moved the
+  DESI-anchored F/G column **down** to 0.029 ± 0.004 (MAD 0.052, 132 stars) and
+  the K/M stars to 0.039, i.e. now ~0.02–0.03 *below* SFD (0.059; 0.05 with the
+  Schlafly & Finkbeiner 2011 rescaling) rather than above it. Either way ~0.03
+  is the method's floor at low A_V, set by the XP/NewEra residuals once T_eff is
+  pinned. It is not the screen / zero-point degeneracy (`freeze_offsets`
+  control; the offsets converged at |Δ| ≤ 0.016 mag), and it is not a template
+  A_V zero point: the injection control at A_V = 0 with the parameters pinned
+  gives −0.007 for 5500–6500 K dwarfs and +0.017 for K dwarfs (v0.8.0, above).
 - Since v0.4.0 the model cache (built from the NewEra HSR files' low-sampling
   spectra) spans 900 Å–6 µm and [M/H] −2..+0.5: the metal-poor halo stars no
   longer sit at a grid edge, GALEX FUV/NUV and WISE W1/W2 can enter the fit.
@@ -212,13 +257,16 @@ of the field. What the COSMOS test (examples/cosmos, SFD A_V ≈ 0.05) showed:
   A_I = 0.34/0.81/0.95/1.07/1.15 at 1/2/3/4/5 kpc, bridged to 1.96 beyond
   the clump (v0.6.0; v0.5.0 gave 2.80 ± 0.46, v0.4.0 2.84 ± 0.48, the
   2500–25000 Å cache 2.88 ± 0.53).
-- ZTF20abgaovd (l 15.9, b +27.2; mid-latitude SN Ia sightline, 30′): R_V = 3.55,
-  MAD 0.85 (754 stars with A_V ≥ 0.5); column A_V = 0.44 ± 0.11 beyond 1 kpc vs
-  SFD 0.47–0.55 (examples/ztf20abgaovd). The packaged run is in examples/ob240669 and pinned by
-  tests/test_regression_ob240669.py (runs when the sightline workspace is in
-  the local cache).
-- COSMOS (l 237, b +42; column mode, 30′): F/G foreground column A_V = 0.027 ±
-  0.005 (K/M 0.026) vs SFD 0.059, ±0.03 systematic (examples/cosmos,
+- ZTF20abgaovd (l 15.9, b +27.2; mid-latitude SN Ia sightline, 30′): R_V = 3.46,
+  MAD 0.79 (1,559 stars with A_V ≥ 0.5, raw 3.35); column A_V = 0.60 ± 0.19
+  beyond 1 kpc vs SFD 0.55 and the Edenhofer+2023 map 0.55
+  (examples/ztf20abgaovd; v0.7.0 gave 3.50 from 1,394 stars, v0.6.0 3.55 from
+  754).
+- ZTF19abqmpti (l 11.4, b +24.3; the same programme at A_V ≈ 1, 30′): R_V = 3.50,
+  MAD 0.45 (2,229 stars, raw 3.44); column A_V = 1.11 ± 0.26 beyond 1 kpc vs the
+  rescaled SFD 1.07 (examples/ztf19abqmpti). Stable to ±0.03 across v0.6/v0.7/v0.8.
+- COSMOS (l 237, b +42; column mode, 30′): F/G foreground column A_V = 0.023 ±
+  0.006 (K/M 0.031) vs SFD 0.059, ±0.03 systematic (examples/cosmos,
   tests/test_regression_cosmos.py).
 
 ## References
