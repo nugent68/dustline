@@ -165,11 +165,12 @@ and the declens source-distance prior `P_SEDdust_XP` 4.43 kpc [3.35, 6.31] — b
 regression test skips on this stack.
 
 **What to do**: rerun it on `tca602f749`. **The user is doing this from another machine
-(2026-09-22)** — do not start it here without asking. There is no 0095 data in this Mac's
-cache despite the v0.7.1 note above (a run started on 2026-09-22 was stopped at 1,800/2,995
-spectra and its workspace deleted at the user's request), and nothing to seed from, so
-wherever it runs it is a full fetch: 2,995 XP stars ≈ 90 min (resumable), then ~1 h of fits
-over 3 passes. **Never delete the workspace** on the machine that does the run.
+(2026-09-22), which holds the 0095 XP cache** — do not start it here without asking. This
+Mac has no 0095 data despite the v0.7.1 note above (a run started on 2026-09-22 was stopped
+at 1,800/2,995 spectra and its workspace deleted at the user's request) and nothing to seed
+from, so here it would be a full fetch: 2,995 XP stars ≈ 90 min, then ~1 h of fits over 3
+passes. On the machine with the cache the new corrections tag seeds its workspace from the
+sibling, so it is a refit. **Never delete the workspace** on the machine that does the run.
 
 ```bash
 source .venv/bin/activate
