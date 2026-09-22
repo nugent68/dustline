@@ -34,7 +34,9 @@ spectroscopic prior (so column mode is unaffected — its template A_V zero poin
   correspondingly smaller: k = +0.017 (dwarfs) / +0.012 (giants) for the cool nodes
   against +0.029 before.
 - Asset `template_corrections.npz` re-released (v0.8.0 tag, 494 kB, sha in
-  `assets.py`); the two regression tests are re-pinned to the new stack.
+  `assets.py`); the bulge and COSMOS regression tests are re-pinned to the new stack.
+  `examples/ob170095` (added in v0.7.1) is still measured on `tc26438c9b`, so
+  `tests/test_regression_ob170095.py` skips until that field is rerun (HANDOFF §6).
 
 ### Examples (all four rerun with `--refit`; closure-corrected R_V, raw in brackets)
 - `examples/ob240669` (bulge, A_V 2–5): R_V **2.82 ± 0.50** from 905 stars [2.79];

@@ -12,5 +12,5 @@ Public API:
 from .api import ExtinctionResult, Sightline
 from .userphot import UserPhotometry
 
-__version__ = "0.7.1"
+__version__ = "0.8.0"
 __all__ = ["Sightline", "ExtinctionResult", "UserPhotometry", "__version__"]

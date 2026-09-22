@@ -39,9 +39,10 @@ Photometric zero points are iterated (NIR frozen after pass 1; GALEX per T_eff b
 ## 2. Environment and caches
 
 - venv: `.venv` (python 3.14; `source .venv/bin/activate`; `dustline` CLI on PATH). Tests:
-  `python -m pytest -q -m "not network"` (49 pass at v0.8.0; the two regression tests use
-  the cached bulge and COSMOS workspaces — a new corrections tag makes them skip until the
-  fields are rerun and the pins updated).
+  `python -m pytest -q -m "not network"` (49 pass, 4 skip at v0.8.0; the three regression
+  tests use the cached bulge / COSMOS / 0095 workspaces — a new corrections tag makes them
+  skip until the fields are rerun and the pins updated, which is why `test_regression_
+  ob170095.py` skips: 0095 is still pinned to `tc26438c9b`, §6).
 - Assets (fetched on first use into `~/.cache/dustline/`, sha-verified, registry in
   `src/dustline/assets.py`): `newera_full_cache.npz` + `mist_v1.2_basic.npz` (v0.1.0),
   `newera_uvir_cache.npz` (v0.4.0, 214 MB, 900 Å–6 µm, the default), `template_corrections.npz`
@@ -79,7 +80,7 @@ Photometric zero points are iterated (NIR frozen after pass 1; GALEX per T_eff b
 | `cli.py` | `dustline run RA DEC [--radius] [--min-av] [--no-spectro] [--freeze-offsets] [--no-uv] [--no-mir] [--desi-teff] [--ref-av] [-o] [--plots DIR] [--force \| --refit]`, `dustline fetch-assets` |
 | `fit.py` | `build_grid`, `_fit_batch` (χ² cubes), `spec_prior_chi2`, `_summarize`, `_refine`/`_refine_star` (sub-grid), `fit_stars`, `measure_offsets`, `uv_offsets_by_teff`, `run_fit_with_offsets` (passes; `teff_from_colour` in column mode) |
 | `calib.py` | template corrections: calibrator selection (DESI dwarfs D<250 pc; APOGEE giants D<1.2 kpc), `teff_from_bprp` (Mamajek locus + [Fe/H] term), `map_extinction` (Edenhofer+2023 via dustmaps), `deredden`, `ratio_spectrum`, `aggregate` (per-model entries where >= 6 calibrators share a model, else coarse bins by the **best-fit model**, unsmoothed), `load`/`tag`/`apply` (`MODEL_FALLBACK` = nearest covered model within 150 K / 0.5 dex / 0.5 dex), `rv_closure`, `LABEL_LOCK_SIGMA` |
-| `ensemble.py` | `law_sample`, `measure_law` (closure-corrected; `rv_raw`), `default_law`, `dust_run`, `bridge_to_clump`, `foreground_column`, `band_ratio_at_rv` |
+| `ensemble.py` | `law_sample`, `measure_law` (closure-corrected; `rv_raw`), `default_law`, `dust_run`, `bridge_to_clump`, `foreground_column`, `band_ratio_at_rv`, `distance_posterior` + `parallax_inflation` (crowded fields, v0.7.1) |
 | `clump.py` | red-clump anchor in (J−Ks, Ks) |
 | `models.py`, `extinction.py`, `filters.py`, `bands.py`, `plotting.py`, `cache.py` | NewEra cache + XP LSF + synthetic photometry; G23/F99 curves; 26 packaged filter curves (`data/filters`); band assembly; figures; `Workspace` |
 | `catalogs/` | `footprint.plan` (survey selection by position), `gaia`, `ps1`, `decaps`, `decals`, `vvv`, `desi`, `apogee`, `galex`, `wise`, `datalab`, `vizier`, `xmatch` |
@@ -88,7 +89,8 @@ Tools: `tools/build_template_corrections.py` (stages `pull`/`fit`/`build` for `d
 `giants`; calibration workspaces `ra+0000.00000_dec+000.00000_r0_8659c9cc` (dwarfs) and
 `_83240b75` (giants)), `tools/inject_reddening.py` (closure test; `closure` stage writes
 `rv_closure_k` into the corrections file), `tools/run_ob240669.py` (regenerates the bulge
-example from the research repo's XP cache), `tools/fetch_svo_filters.py`.
+example from the research repo's XP cache), `tools/prior_profile.py` (package outputs →
+the declens source-distance-prior inputs), `tools/fetch_svo_filters.py`.
 
 ## 4. v0.7.0–v0.8.0 in two paragraphs (details: docs/method.md)
 
@@ -148,68 +150,43 @@ budget (±0.05 closure, ±0.05 NIR zero points), not the answers.
    measure their own PS1 offsets (which is why this is not a blocker), but the injection
    closure inherits no PS1 information. A fainter calibrator sample (DESI reaches G 19)
    would fix it.
-6. GALEX adds nothing at A_V < 0.1 and drops out where R_V is measurable; WISE is neutral.
+6. **The clump column rests on one colour**: `clump.py` anchors on E(J−Ks) alone, and
+   A_i/E(J−Ks) ≈ 3.8, so 0.03 mag of clump colour is 0.1 in A_i. On 0095 it gives A_i 1.67
+   against the prototype's five-estimator (g−i, i−Ks, J−Ks, H−Ks, LF peaks) 1.86 ± 0.19.
+   Folding the other estimators in is the next improvement for bulge sightlines (v0.7.1).
+7. GALEX adds nothing at A_V < 0.1 and drops out where R_V is measurable; WISE is neutral.
 
-## 6. Task for the next agent: OGLE-2017-BLG-0095 on the v0.8.0 stack
+## 6. Task for the next agent: 0095 on the v0.8.0 corrections
 
-**Why**: 0095 is the sightline the method was built for (research prototype, 2026-09-17:
-`~/claude/dustline/results/ob170095/`, `HANDOFF_dustline.md` §0). Its deliverable
-(`P_SEDdust_XP`, the source-distance prior sent to Natasha) rests on a 2500–25000 Å cache,
-solar-[M/H] templates, no corrections, no closure, the 0.25/0.1 grid — everything v0.7/v0.8
-changed. A package run is both a regression of the package on the DECaPS/VVV/clump path
-(only exercised by the bulge example so far) and an updated deliverable.
+`examples/ob170095` (OGLE-2017-BLG-0095, RA 267.86642, Dec −33.13517, l 357.0°, b −3.2°, 5′)
+was delivered in v0.7.1 — README, `tests/test_regression_ob170095.py`, `tools/prior_profile.py`,
+and the declens source-distance prior `P_SEDdust_XP` 4.43 kpc [3.35, 6.31] — but on the
+**v0.7.0 corrections (`tc26438c9b`)**, before the label-locked per-model table. The 0095
+workspace in the cache is therefore keyed to the old tag and its regression test skips.
 
-**Target**: RA 267.86642, Dec −33.13517 (l 357.0°, b −3.2°). `footprint.plan` gives
-`optical=decaps, nir=vvv, in_bulge_window=True, apogee=True, spectro=none` (no DESI here).
-There is **no XP cache for 0095 on this machine** (the research repo's `data/` only holds
-OB240669); the Gaia fetch is the cost: the research run used 5′ (2,995 XP stars ≈ 1.5 h);
-9′ as in the bulge example ≈ 9,000 stars ≈ 4.5 h (resumable). Recommend **5′ first**, so
-the star-by-star comparison with the prototype is direct, then 9′ if the clump window needs it.
+**What to do**: rerun it on `tca602f749`. The XP spectra are already on this Mac
+(`~/.cache/dustline/sightlines/ra+0267.86642_dec-033.13517_r5_*`) and a new corrections tag
+auto-seeds its workspace from the sibling, so this is a refit (~25 min for 2,995 stars), not
+a 1.5 h fetch. **Never delete either workspace.**
 
 ```bash
 source .venv/bin/activate
-nohup dustline run 267.86642 -33.13517 --radius 5 -o examples/ob170095/extinction_I.csv \
-      --plots examples/ob170095 > /tmp/ob170095.log 2>&1 &
+dustline run 267.86642 -33.13517 --radius 5 --plx-inflate 1.7 --filter I --refit \
+      -o examples/ob170095/extinction_I.csv --plots examples/ob170095
+python tools/prior_profile.py 267.86642 -33.13517 --radius 5 --plx-inflate 1.7 \
+      -o examples/ob170095/prior
 ```
-(the CLI reports progress; `--plots` writes `law_rv.png`, `extinction_run_I.png`; copy the
-workspace's `result.json` to `examples/ob170095/law.json`. If the Gaia archive 408s, the
-Data Lab fallback engages by itself; if the DECaPS/VVV fetch fails, `catalogs/decaps.py` /
-`vvv.py` are the places to look — both were last exercised in v0.2 on OB240669.)
 
-**Compare against** (`~/claude/dustline/results/ob170095/`, format notes below):
-- law: R_V 3.15 (MAD 0.23, 195 stars with A_V ≥ 2); ratios for a 6000 K source at
-  R_V 3.15: A_g/A_i 1.885, A_r 1.335, A_z 0.767, A_Y 0.663, A_J 0.442, A_H 0.282,
-  A_Ks 0.179 (`xp_law.json`). Expect the v0.7 R_V to differ by up to ~0.1–0.2 (band
-  corrections at A_V > 0, closure +0.03–0.1 for the cool giants).
-- run: A_i 0.59 / 1.19 / 1.33 / 1.39 / 1.81 at 0.5–1 / 1–1.5 / 1.5–2 / 2–3 / 3–5 kpc
-  (`xp_dust_run.csv`, columns `D_kpc, AV_target(=A_i), …`), bridged to the clump column
-  **A_i 1.90 ± 0.06 ± 0.19 at 8.0 kpc** (`clump_anchor.json`: 650 stars within 3′,
-  (i−Ks, Ks) = (3.41, 13.24)). The package's `extinction_I.csv` is `D_kpc, A_med, A_16,
-  A_84, n_stars, bridged, band, ratio_av` in Cousins I (`--filter DECam_i` or
-  `res.extinction("DECam_i")` gives DECam i directly). The package's clump is found in
-  (J−Ks, Ks) with VVV; the prototype used (i−Ks) — check `result.json["clump_anchor"]`
-  (`E_JK`, `AV_column`, `D_RC`) against 1.90 / 8.0 kpc.
-- zero points: DECaPS g −0.066, r −0.092, i −0.036, z −0.034, Y −0.041; VVV J −0.007,
-  H +0.002, Ks +0.042 (`phot_offsets.json`, obs − synthetic). The package iterates its
-  own (`phot_offsets.json` in the workspace; NIR frozen after pass 1).
-- APOGEE: 16 giants within 15′, T_eff(XP) − T_eff(ASPCAP) = +49 K for [M/H] > −0.3
-  (`apogee_check.txt`); the package now reports `result.json["apogee_check"]` (and has
-  [M/H] −2..+0.5 templates, so the metal-poor giants should no longer be +386 K).
-- residuals: the prototype's stacked (data − model)/model wiggles (+7 % at 640 nm, −5 % at
-  500–540 and 770 nm) should be much reduced by the corrected templates — worth one
-  figure (`xp_residuals.txt` has the old numbers).
+Then copy the workspace `result.json` to `examples/ob170095/law.json`, update the README
+numbers (and its "Numbers are from the v0.7.0 stack" note), re-pin
+`tests/test_regression_ob170095.py`, and rerun the in-field parallax calibration
+(`law.json["plx_inflation_clump"]`) in case ×1.7 is no longer the right inflation.
 
-**Deliverable**: the source-distance prior is produced by the declens snapshot
-`~/claude/dustline/ref/ob170095/scripts/sed_distance_prior.py --profile <run.csv>
---profile-unit ai --laws sf11,f99rv25,measured --tag _xp`, which reads the prototype's
-`xp_dust_run.csv` profile format (`D_kpc, AV_target, AV_nb_min, AV_nb_med, AV_nb_max, N`
-in A_i) and `xp_law.json` (`ratios_source_g23` for the 6000 K source). Write a small
-converter from the package outputs (`extinction_I.csv` in DECam i → the profile columns;
-`law.json["rv"]` + `ensemble.band_ratio_at_rv(band, rv, teff=6000, logg=4.0)` → the
-source ratios) rather than editing the declens script; then rerun the prior and compare
-with **5.42 kpc, 68 % [3.95, 6.66], P(D ≥ 6) 0.35**. Port nothing back to declens without
-the user's say-so.
+**Expect**: R_V within ~0.05 of 3.16 (the v0.6→v0.8 field-to-field stability, §4) with a
+smaller closure term (+0.10 → ~+0.04 for cool giants); the clump anchor and the zero points
+should barely move. The prototype comparison to hold against is in the README: R_V 3.15 ±
+0.23, clump A_i 1.86 ± 0.19 at 8.3 kpc, prior 4.41 kpc [3.38, 5.90]. Port nothing back to
+the declens repo (`~/claude/dustline`) without the user's say-so.
 
-**Also worth doing on the way**: pin an `examples/ob170095/README.md` in the style of the
-others, add a `tests/test_regression_ob170095.py` (skip-if-workspace-absent pattern), and
-put the DECaPS/VVV zero points and the APOGEE check in the changelog.
+**Also worth doing**: §5.6, the multi-estimator clump column — 0095 is the sightline where
+the single-colour anchor is demonstrably 0.19 mag low, so it is the natural test case.
