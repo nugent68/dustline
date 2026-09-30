@@ -44,6 +44,17 @@ def clump_intrinsic(j_band: str, ks_band: str) -> dict:
     return dict(JK0=m0[j_band] - m0[ks_band], MJ=m0[j_band], MKs=m0[ks_band])
 
 
+def nir_bands(stars: pd.DataFrame, plan_nir: str, min_pairs: int = 500) -> tuple[str, str]:
+    """(J, Ks) band names for the clump: the plan's survey when its photometry is actually there,
+    else 2MASS (VVV comes from the DECaPS stellar-inference table and is missing where DECaPS
+    does not reach, e.g. l > ~5.5 deg in the bulge)."""
+    for pre in (("VISTA", "2MASS") if plan_nir == "vvv" else ("2MASS",)):
+        J, K = stars.get(f"mag_{pre}_J"), stars.get(f"mag_{pre}_Ks")
+        if J is not None and K is not None and int((np.isfinite(J) & np.isfinite(K)).sum()) >= min_pairs:
+            return f"{pre}_J", f"{pre}_Ks"
+    return "2MASS_J", "2MASS_Ks"
+
+
 def find_clump(stars: pd.DataFrame, law: dict, j_band: str, ks_band: str) -> dict | None:
     """Locate the red clump in (J-Ks, Ks) and derive the bulge column.
 
@@ -68,10 +79,16 @@ def find_clump(stars: pd.DataFrame, law: dict, j_band: str, ks_band: str) -> dic
         return None
 
     intr = clump_intrinsic(j_band, ks_band)
-    # search the reddened-clump region: redward of the intrinsic colour, Ks 11-15.5
+    # search the reddened-clump region: redward of the intrinsic colour, Ks 11-15.5, and on the
+    # clump's reddening track at a bulge distance (each star dereddened as if it were a clump
+    # giant); without the track cut, low-extinction fields (b ~ -5) peak on the bulge turnoff
+    # at Ks ~ 15.3 instead of the clump at Ks ~ 13
     xr = (intr["JK0"] + 0.1, intr["JK0"] + 3.0)
     yr = (11.0, 15.5)
-    inwin = (jk > xr[0]) & (jk < xr[1]) & (ks > yr[0]) & (ks < yr[1])
+    mu_track = ks - (jk - intr["JK0"]) * rK / (rJ - rK) - intr["MKs"]
+    mu_lo, mu_hi = (5 * np.log10(d * 100.0) for d in D_RC_RANGE)
+    inwin = ((jk > xr[0]) & (jk < xr[1]) & (ks > yr[0]) & (ks < yr[1])
+             & (mu_track > mu_lo) & (mu_track < mu_hi))
     if inwin.sum() < 200:
         return None
     H, xe, ye = np.histogram2d(jk[inwin], ks[inwin],

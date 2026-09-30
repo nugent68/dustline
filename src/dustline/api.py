@@ -297,8 +297,8 @@ class Sightline:
         if self.plan.in_bulge_window:
             from . import clump
 
-            nir_prefix = "VISTA" if self.plan.nir == "vvv" else "2MASS"
-            anchor = clump.find_clump(stars, law, f"{nir_prefix}_J", f"{nir_prefix}_Ks")
+            j_band, ks_band = clump.nir_bands(stars, self.plan.nir)
+            anchor = clump.find_clump(stars, law, j_band, ks_band)
             if anchor:
                 law["clump_anchor"] = anchor
                 infl = ensemble.parallax_inflation(stars, anchor)

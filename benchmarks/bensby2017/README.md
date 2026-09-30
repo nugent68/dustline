@@ -47,3 +47,29 @@ confirmed against the OGLE EWS position); RA/Dec is used.
 
 `n_xp_5arcmin` gives each field's XP cost (~1.8 s per spectrum); MOA-2011-BLG-445 and
 MACHO-1999-BLG-022 are 4.4' apart and share a workspace.
+
+## Stage A results (2026-09-30; `tools/bensby_stage_a.py`, `stage_a_summary.{csv,txt}`)
+
+The dustline clump anchor (J-Ks, `clump.find_clump`) at all 91 events, no XP spectra.
+
+- Two anchor bugs found and fixed (both in `src/`): (1) where the plan says VVV but the VVV
+  photometry is absent (DECaPS stellar inference does not reach l > ~5.5 deg), the anchor looked
+  for VISTA columns and silently failed - `clump.nir_bands` now falls back to 2MASS (6 events);
+  (2) at b ~ -5 the peak search locked onto the bulge turnoff at Ks ~ 15.3 - the search is now
+  restricted to the clump's reddening track at 5-12 kpc (3 events). 0095's anchor is unchanged.
+  After the fixes the anchor is found at all 91 events.
+- Clump colour: dustline E(J-Ks) - Gonzalez+12 E(J-Ks) = -0.013 +/- 0.025 (ratio 0.96, N 88);
+  D_RC 0.2 kpc nearer than Nataf's (robust sd 0.3).
+- A_I: J-Ks anchor x G23 band ratios at R_V 3.1 gives A_I,anchor / A_I,src = 1.05 +/- 0.13
+  (vs Nataf's clump A_I 1.02 +/- 0.07). The truth wants A_I/E(J-Ks) = 3.60 +/- 0.06 (G23 at
+  R_V 3.1: 3.78; the G23 R_V that matches is 3.7). At 0095's measured R_V 3.17 the anchor's
+  A_I is therefore ~4 % high.
+- The OPTICAL law is not G23 at any single R_V: E(V-I)/E(J-Ks) needs R_V ~2.7 while A_I/E(J-Ks)
+  needs ~3.7 (G23 at 3.1 gives E(V-I) 19 % low). Same sign as the 0095 clump vector (E(g-i)/E(i-Ks)
+  13 % above G23) and as Nataf+2013's low A_I/E(V-I): bulge dust is steeper between V and I than
+  G23 predicts for the R_V that fits I and the NIR. This matters for any fit that uses V/g/r
+  photometry under G23 (e.g. the source SED in the declens prior).
+- Per-field scatter in the source A_I (77 sources with the DECaPS map): DECaPS 3D map x its
+  median A_I/E_map (1.89) 9.8 %; dustline anchor 12.0 %; Nataf's clump A_I 8.2 %; truth error
+  10.4 %. All at the noise floor. The map's ABSOLUTE bias still needs its E -> A_I conversion
+  (Zucker+25 Table 2 units) - not yet done.
