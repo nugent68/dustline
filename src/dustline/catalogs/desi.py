@@ -21,13 +21,15 @@ import pandas as pd
 
 from ..cache import Workspace
 from .datalab import box_query
+from .local import MirrorError
 
 TEFF_SYS = 1.0       # K: T_eff is LOCKED to the DESI label (grid point); see calib.TEFF_PRIOR_SIGMA
 LOGG_SYS = 0.10      # dex
 FEH_SYS = 0.10       # dex
 _COLS = ["source_id", "target_ra", "target_dec", "teff", "teff_err", "logg", "logg_err",
          "feh", "feh_err", "alphafe", "snr_med", "survey", "program"]
-_EXTRA = "AND rr_spectype = 'STAR' AND rvs_warn = 0 AND zcat_primary = 't'"
+_WHERE = [("rr_spectype", "==", "STAR"), ("rvs_warn", "==", 0), ("zcat_primary", "==", True)]
+_EXTRA = "AND rr_spectype = 'STAR' AND rvs_warn = 0 AND zcat_primary = 't'"   # = render_adql(_WHERE)
 
 
 def shape(d: pd.DataFrame) -> pd.DataFrame:
@@ -58,7 +60,9 @@ def fetch(ws: Workspace, gaia: pd.DataFrame, force: bool = False) -> pd.DataFram
         return pd.read_csv(out)
     try:
         d = box_query("desi_dr1.mws", _COLS, ws.ra, ws.dec, ws.radius_arcmin / 60.0,
-                      ra_col="target_ra", dec_col="target_dec", extra=_EXTRA)
+                      ra_col="target_ra", dec_col="target_dec", where=_WHERE)
+    except MirrorError:
+        raise                             # a broken mirror must not be cached as "no data"
     except Exception as e:  # noqa: BLE001
         print(f"DESI query failed ({e}); continuing without spectroscopic priors")
         pd.DataFrame(dict(source_id=[])).to_csv(out, index=False)

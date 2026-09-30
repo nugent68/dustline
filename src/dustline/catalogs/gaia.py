@@ -47,6 +47,18 @@ WHERE 1=CONTAINS(POINT('ICRS', g.ra, g.dec),
                  CIRCLE('ICRS', {ra}, {dec}, {radius_deg}))
 """
 
+# the cone's gaia_source columns and 2MASS aliases, in the ESA query's output order (local mirror)
+GAIA_COLS = ["source_id", "ra", "dec", "l", "b", "parallax", "parallax_error", "parallax_over_error",
+             "pmra", "pmra_error", "pmdec", "pmdec_error", "ruwe", "ipd_frac_multi_peak",
+             "ipd_gof_harmonic_amplitude", "astrometric_params_solved", "visibility_periods_used",
+             "phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag", "phot_g_mean_flux_over_error",
+             "phot_bp_mean_flux_over_error", "phot_rp_mean_flux_over_error", "phot_bp_rp_excess_factor",
+             "phot_bp_n_obs", "phot_rp_n_obs", "bp_rp", "has_xp_continuous", "has_xp_sampled", "has_rvs",
+             "teff_gspphot", "ag_gspphot", "distance_gspphot", "non_single_star", "in_qso_candidates",
+             "in_galaxy_candidates"]
+TMASS_COLS = {"mag_J": "j_m", "magerr_J": "j_msigcom", "mag_H": "h_m", "magerr_H": "h_msigcom",
+              "mag_Ks": "ks_m", "magerr_Ks": "ks_msigcom", "tmass_ph_qual": "ph_qual", "tmass_sep": "tmass_sep"}
+
 # the TAP service lower-cases aliases; restore the band-case names the fits expect
 _CASE_FIX = [("mag_j", "mag_J"), ("magerr_j", "magerr_J"), ("mag_h", "mag_H"),
              ("magerr_h", "magerr_H"), ("mag_ks", "mag_Ks"), ("magerr_ks", "magerr_Ks")]
@@ -180,6 +192,14 @@ def cone(ws: Workspace, force: bool = False) -> pd.DataFrame:
     out = ws.path("gaia.csv")
     if out.exists() and not force:
         return pd.read_csv(out, low_memory=False)
+    from . import local
+    g = local.gaia_cone(ws.ra, ws.dec, ws.radius_arcmin / 60.0, GAIA_COLS, TMASS_COLS)
+    if g is not None:
+        g.to_csv(out, index=False)
+        g = pd.read_csv(out, low_memory=False)
+        print(f"gaia cone (local mirror): {len(g)} sources, {int((g.has_xp_continuous == True).sum())} with XP")  # noqa: E712
+        return g
+    local.require_network("gaiadr3.gaia_source")
     adql = _ADQL.format(ra=ws.ra, dec=ws.dec, radius_deg=ws.radius_arcmin / 60.0)
     q = urllib.parse.urlencode(dict(REQUEST="doQuery", LANG="ADQL", FORMAT="csv", QUERY=adql))
     req = urllib.request.Request(GAIA_TAP + "?" + q, headers=UA)
@@ -228,6 +248,18 @@ def fetch_xp(ws: Workspace, gaia: pd.DataFrame, chunk: int = 200) -> None:
     print(f"XP: {len(ids)} sources, {len(done)} fetched, {len(todo)} to go "
           f"(~{len(todo) * 1.8 / 60:.0f} min)", flush=True)
     header_written = out.exists()
+    from . import local
+    if todo:
+        txt = local.xp_csv_rows(todo)
+        if txt is not None:
+            lines = txt.splitlines()
+            with open(out, "a") as fh:
+                if not header_written:
+                    fh.write(lines[0] + "\n")
+                fh.write("\n".join(lines[1:]) + "\n")
+            print(f"  {len(todo)} XP spectra from the local mirror", flush=True)
+            return
+        local.require_network("gaiadr3.xp_continuous_mean_spectrum")
     for k in range(0, len(todo), chunk):
         txt = _fetch_chunk(todo[k:k + chunk])
         lines = txt.splitlines()

@@ -15,10 +15,12 @@ import pandas as pd
 
 from ..cache import Workspace
 from .datalab import box_query
+from .local import MirrorError
 
 _COLS = ["ra", "dec", "gaiaedr3_source_id", "teff", "logg", "fe_h", "fe_h_err", "m_h",
          "alpha_m", "snr", "starflag", "telescope"]
-_EXTRA = "AND teff > 0 AND snr > 30"
+_WHERE = [("teff", ">", 0), ("snr", ">", 30)]
+_EXTRA = "AND teff > 0 AND snr > 30"   # = render_adql(_WHERE)
 
 
 def shape(d: pd.DataFrame) -> pd.DataFrame:
@@ -37,7 +39,9 @@ def fetch(ws: Workspace, gaia: pd.DataFrame, force: bool = False) -> pd.DataFram
         return pd.read_csv(out)
     try:
         d = box_query("sdss_dr17.apogee2_allstar", _COLS, ws.ra, ws.dec, ws.radius_arcmin / 60.0,
-                      extra=_EXTRA)
+                      where=_WHERE)
+    except MirrorError:
+        raise                             # a broken mirror must not be cached as "no data"
     except Exception as e:  # noqa: BLE001
         print(f"APOGEE query failed ({e}); continuing without")
         pd.DataFrame(dict(source_id=[])).to_csv(out, index=False)

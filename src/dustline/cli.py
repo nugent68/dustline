@@ -3,6 +3,7 @@
     dustline run RA DEC [--filter I] [--radius 5] [--phot my.csv --phot-bands g=DECam_g,Ks=VISTA_Ks]
                         [--no-spectro] [--freeze-offsets] [--ref-av 0.05] [-o out.csv] [--force | --refit]
     dustline fetch-assets            # pre-download the model assets
+    dustline mirror-info             # which catalogs resolve to the local survey mirror (DUSTLINE_SURVEYS)
     dustline clear-cache [--all]     # remove sightline caches (and assets with --all)
 """
 
@@ -71,6 +72,35 @@ def _cmd_fetch_assets(a) -> int:
     return 0
 
 
+def _cmd_mirror_info(a) -> int:
+    """Which catalogs resolve to the local survey mirror ($DUSTLINE_SURVEYS) and which go to the network."""
+    from .catalogs import local
+
+    r = local.root()
+    print(f"DUSTLINE_SURVEYS = {r or '(unset: everything from the network)'};  DUSTLINE_MIRROR = {local.mode()}")
+    if r is None:
+        return 0
+    network = {
+        "gaiadr3.gaia_source": "ESA TAP", "gaiadr3.tmass_psc_xsc_best_neighbour": "ESA TAP (join)",
+        "gaiadr1.tmass_original_valid": "ESA TAP (join)", "gaiadr3.xp_continuous_mean_spectrum": "ESA DataLink",
+        "decaps_dr2.object": "Data Lab", "decaps_dr2.stellar_inference": "Data Lab", "ls_dr10.tractor": "Data Lab",
+        "allwise.source": "Data Lab", "desi_dr1.mws": "Data Lab", "sdss_dr17.apogee2_allstar": "Data Lab",
+        "twomass.psc": "Data Lab", "II/335/galex_ais": "VizieR", "vvv.virac2": "(mirror only)",
+        "ps1 dr2 mean": "MAST (not mirrored)"}
+    reg = local._registry()
+    for name, svc in network.items():
+        hit = reg.get(name)
+        if hit is None:
+            state = f"network  ({svc})"
+        else:
+            spec = hit[1]
+            n = spec.get("nrows_total")
+            state = (f"LOCAL    {hit[0]}" if spec.get("status") == "complete" else
+                     f"network  ({svc}); mirror {spec.get('status')}") + (f"  [{n:,} rows]" if n else "")
+        print(f"  {name:40s} {state}")
+    return 0
+
+
 def _cmd_clear_cache(a) -> int:
     from . import assets
 
@@ -122,6 +152,9 @@ def main(argv=None) -> int:
     f = sub.add_parser("fetch-assets", help="pre-download the model assets")
     f.add_argument("--force", action="store_true")
     f.set_defaults(func=_cmd_fetch_assets)
+
+    m = sub.add_parser("mirror-info", help="show which catalogs come from the local survey mirror")
+    m.set_defaults(func=_cmd_mirror_info)
 
     c = sub.add_parser("clear-cache", help="remove cached sightline products")
     c.add_argument("--all", action="store_true", help="also remove the model assets")

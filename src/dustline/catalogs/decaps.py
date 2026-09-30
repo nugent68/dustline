@@ -12,6 +12,7 @@ import pandas as pd
 
 from ..cache import Workspace
 from .datalab import box_query
+from .local import MirrorError
 from .xmatch import match_to_gaia
 
 MATCH_ARCSEC = 0.7
@@ -28,6 +29,8 @@ def fetch(ws: Workspace, gaia: pd.DataFrame, force: bool = False) -> pd.DataFram
         [f"nmag_{b}" for b in _BANDS] + [f"fracflux_avg_{b}" for b in _BANDS]
     try:
         d = box_query("decaps_dr2.object", cols, ws.ra, ws.dec, ws.radius_arcmin / 60.0)
+    except MirrorError:
+        raise                             # a broken mirror must not be cached as "no data"
     except Exception as e:  # noqa: BLE001
         print(f"DECaPS query failed ({e}); continuing without")
         pd.DataFrame(dict(source_id=[])).to_csv(out, index=False)

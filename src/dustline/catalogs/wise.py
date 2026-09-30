@@ -15,6 +15,7 @@ import pandas as pd
 
 from ..cache import Workspace
 from .datalab import box_query
+from .local import MirrorError
 from .xmatch import match_to_gaia
 
 MATCH_ARCSEC = 1.5
@@ -47,6 +48,8 @@ def fetch(ws: Workspace, gaia: pd.DataFrame, force: bool = False) -> pd.DataFram
         return pd.read_csv(out)
     try:
         d = box_query("allwise.source", _COLS, ws.ra, ws.dec, ws.radius_arcmin / 60.0)
+    except MirrorError:
+        raise                             # a broken mirror must not be cached as "no data"
     except Exception as e:  # noqa: BLE001
         print(f"AllWISE query failed ({e}); continuing without")
         pd.DataFrame(dict(source_id=[])).to_csv(out, index=False)

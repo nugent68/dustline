@@ -24,6 +24,7 @@ import pandas as pd
 
 from ..cache import Workspace
 from .vizier import box_query
+from .local import MirrorError
 from .xmatch import match_to_gaia
 
 MATCH_ARCSEC = 2.5       # GALEX PSF ~ 5"; AIS astrometry ~ 0.5"
@@ -59,6 +60,8 @@ def fetch(ws: Workspace, gaia: pd.DataFrame, force: bool = False) -> pd.DataFram
         return pd.read_csv(out)
     try:
         d = box_query("II/335/galex_ais", _COLS, ws.ra, ws.dec, ws.radius_arcmin / 60.0)
+    except MirrorError:
+        raise                             # a broken mirror must not be cached as "no data"
     except Exception as e:  # noqa: BLE001
         print(f"GALEX query failed ({e}); continuing without")
         pd.DataFrame(dict(source_id=[])).to_csv(out, index=False)

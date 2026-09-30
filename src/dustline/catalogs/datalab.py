@@ -19,7 +19,17 @@ UA = {"User-Agent": "dustline"}
 
 
 def box_query(table: str, columns: list[str], ra: float, dec: float, radius_deg: float,
-              ra_col: str = "ra", dec_col: str = "dec", extra: str = "") -> pd.DataFrame:
+              ra_col: str = "ra", dec_col: str = "dec", extra: str = "", where=None) -> pd.DataFrame:
+    """RA-Dec box, then the flat-sky circle cut.  where: structured filters [(col, op, value)]
+    (used by the local mirror; rendered to ADQL for the network) - pass either it or extra."""
+    from . import local
+    t = local.table(table)
+    if t is not None:
+        if extra and not where:
+            raise local.MirrorError(f"{table}: a raw ADQL `extra` cannot be applied locally; pass where=")
+        return t.box(columns, ra, dec, radius_deg, ra_col, dec_col, where)
+    local.require_network(table)
+    extra = extra or local.render_adql(where)
     cosd = max(np.cos(np.radians(dec)), 1e-3)
     dra = radius_deg / cosd
     adql = (f"SELECT {', '.join(columns)} FROM {table} "
@@ -36,9 +46,17 @@ def box_query(table: str, columns: list[str], ra: float, dec: float, radius_deg:
 
 def positions_query(table: str, columns: list[str], ra, dec, radius_arcsec: float,
                     ra_col: str = "ra", dec_col: str = "dec",
-                    chunk: int = 80, extra: str = "") -> pd.DataFrame:
+                    chunk: int = 80, extra: str = "", where=None) -> pd.DataFrame:
     """All rows within radius_arcsec of any of the positions: OR'd boxes, chunked
     (for calibration samples scattered over the sky)."""
+    from . import local
+    t = local.table(table)
+    if t is not None:
+        if extra and not where:
+            raise local.MirrorError(f"{table}: a raw ADQL `extra` cannot be applied locally; pass where=")
+        return t.positions(columns, ra, dec, radius_arcsec, ra_col, dec_col, where)
+    local.require_network(table)
+    extra = extra or local.render_adql(where)
     ra, dec = np.asarray(ra, float), np.asarray(dec, float)
     r = radius_arcsec / 3600.0
     frames = []
