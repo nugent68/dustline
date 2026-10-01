@@ -263,7 +263,7 @@ class Table:
                 continue
             v = raw[spec["src"]]
             if "index" in spec:
-                v = v[:, spec["index"]]
+                v = v[:, spec["index"]] if v.ndim == 2 else v[:0]      # empty cone: no array column read
             if spec.get("null_zero"):
                 v = np.where(v == 0, np.nan, v.astype(float))
             if spec.get("null_value") is not None:

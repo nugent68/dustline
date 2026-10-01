@@ -35,9 +35,9 @@ with the service.
 | `sdss_dr17.apogee2_allstar` | `apogee_dr17/allstar/hp32` (from cosmo allStar DR17) | 733,900 | complete. Data Lab: same rows; values to its rounding; PostgreSQL NaN semantics |
 | `desi_dr1.mws` | `desi_dr1/mws/hp32` (from the DR1 MWS VAC) | 6,372,607 | complete. Data Lab: same rows and values; 2/1281 `source_id` swapped by Data Lab |
 | `II/335/galex_ais` | `galex/guvcat_ais/hp32` (MAST HLSP GUVcat AIS) | 82,992,062 | **partial**. About 1 % of sources in tile overlaps are a different measurement than VizieR II/335 |
-| `allwise.source` | `allwise/source/hp32` (from cosmo allwise-catalog) | 747 M | in progress |
-| `decaps_dr2.stellar_inference` | `zucker25/stellar_inference/hp32` (Harvard Dataverse K88GFI) | 709 M | in progress |
-| `vvv.virac2` | `vvv/virac2/hp32` (ESO tap_cat) | 545 M | not started: ESO TAP too slow for dense bulge pixels (>1 h each) |
+| `allwise.source` | `allwise/source/hp32` (from cosmo allwise-catalog) | 747,634,026 | complete. Data Lab: identical rows and values |
+| `decaps_dr2.stellar_inference` | `zucker25/stellar_inference/hp32` (Harvard Dataverse K88GFI) | 709,129,917 | complete. Data Lab: identical rows; values to rounding; 0095 `vvv_gaia.csv` identical |
+| `vvv.virac2` | — (ESO tap_cat only) | 545 M | not mirrored: one dense bulge pixel took >1 h through ESO TAP; ESO's phase-3 files hold only the light curves (11.2 TB) |
 | `decaps_dr2.object` | — | 3.3 G | **not available**: the DECaPS2 dbfits bucket returns 403 |
 | PS1 DR2 | — | — | not mirrored (no bulk dump); MAST |
 | `ls_dr10.tractor` | — | — | not done yet (cosmo `legacysurvey/dr10` sweeps) |
@@ -52,3 +52,13 @@ with the service.
 - `_logs/`, `_staging/`: logs and transient downloads.
 
 Every ingest script is resumable: rerun it and it skips the units in its ledger.
+
+## End-to-end check (2026-09-30)
+
+OGLE-2017-BLG-0095, 5′, run on a Perlmutter node with the mirror. Gaia, XP, 2MASS, APOGEE and VVV
+came from the mirror; DECaPS photometry came from Data Lab.
+
+- The data stage took about 2 minutes. Over the network it takes about 2 hours, dominated by the XP fetch.
+- `gaia.csv`, `xp_continuous_raw.csv` and `vvv_gaia.csv` are identical to the network-built files, and `xp_sampled.npz` is bit-identical.
+- R_V = 3.17 ± 0.25 from 333 stars, the same as the reference run, and the A_V(D) run agrees to 1e-4.
+- Per-star differences are floating-point level (machine BLAS): a median ΔA_V of 5e-5, with 2 of 2,995 stars switching best-fit node.

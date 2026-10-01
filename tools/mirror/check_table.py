@@ -107,9 +107,10 @@ def compare(net: pd.DataFrame, loc: pd.DataFrame, key: list[str]) -> dict:
             xv, yv = x.astype(float).values, y.astype(float).values
             tol = 0.505 * 10.0 ** -_decimals(xv) + 1e-6 * np.abs(xv)     # rounding (float32 -> decimal slack)
             with np.errstate(invalid="ignore"):
-                ok = (np.isnan(xv) & np.isnan(yv)) | (np.abs(xv - yv) <= tol)
-            if np.isfinite(xv - yv).any():
-                maxd[c] = float(np.nanmax(np.abs(xv - yv)))
+                ok = (np.isnan(xv) & np.isnan(yv)) | (xv == yv) | (np.abs(xv - yv) <= tol)
+            fin = np.isfinite(xv) & np.isfinite(yv)
+            if fin.any():
+                maxd[c] = float(np.max(np.abs(xv[fin] - yv[fin])))
         else:
             ok = (x.isna() & y.isna()) | (x.astype(str).str.strip() == y.astype(str).str.strip())
         if not np.all(ok):
