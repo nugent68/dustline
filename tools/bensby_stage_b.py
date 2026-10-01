@@ -38,9 +38,11 @@ def events(only=None):
     return ev[ev.name.isin(only)] if only else ev
 
 
-def sightline(ra, dec):
+def sightline(ra, dec, shallow=False):
+    """shallow: let the plan pick PS1 over DECaPS (fields at the DECaPS edge where DECaPS returns
+    nothing, e.g. OGLE-2014-BLG-1418 at l 5.4, b -4.35: 2MASS-only otherwise)."""
     from dustline.api import Sightline
-    return Sightline(ra, dec, RADIUS, plx_inflate=PLX_INFLATE)
+    return Sightline(ra, dec, RADIUS, plx_inflate=PLX_INFLATE, prefer_deep=not shallow)
 
 
 def _data(ev):
@@ -49,7 +51,7 @@ def _data(ev):
     t0 = time.time()
     out = dict(name=ev["name"])
     try:
-        sl = sightline(ev["ra"], ev["dec"])
+        sl = sightline(ev["ra"], ev["dec"], ev.get("shallow", False))
         if not sl.ws.has("xp_sampled.npz"):
             sl.ws.seed_from_sibling()
         g = gaia.cone(sl.ws)
@@ -80,7 +82,7 @@ def _fit(ev, threads):
     t0 = time.time()
     out = dict(name=ev["name"])
     try:
-        sl = sightline(ev["ra"], ev["dec"])
+        sl = sightline(ev["ra"], ev["dec"], ev.get("shallow", False))
         res = sl.run()
         res.save(os.path.join(OUT, f"{ev['name']}.extinction_I.csv"), band="I")
         law = res.law
@@ -102,7 +104,7 @@ def _pool(fn, items, jobs, _tag, *extra):
 
 def cmd_data(a):
     os.makedirs(OUT, exist_ok=True)
-    todo = [r._asdict() for r in events(a.only).itertuples(index=False)
+    todo = [dict(r._asdict(), shallow=r.name in (a.shallow or [])) for r in events(a.only).itertuples(index=False)
             if a.redo or not os.path.exists(os.path.join(OUT, f"{r.name}.data.json"))]
     print(f"data: {len(todo)} fields", flush=True)
     for r in _pool(_data, todo, a.jobs, "data"):
@@ -137,7 +139,7 @@ def cmd_fit(a):
                 continue
         p = os.path.join(OUT, f"{r.name}.data.json")
         if os.path.exists(p) and json.load(open(p)).get("ok"):
-            ready.append(r._asdict())
+            ready.append(dict(r._asdict(), shallow=r.name in (a.shallow or [])))
     # largest fields first (the wall time follows the XP count)
     ready.sort(key=lambda e: -e.get("n_xp_5arcmin", 0))
     print(f"fit: {len(ready)} fields, {a.jobs} at a time x {a.threads} threads", flush=True)
@@ -227,6 +229,7 @@ def main():
         p.add_argument("--jobs", type=int, default=8)
         p.add_argument("--only", nargs="*")
         p.add_argument("--redo", action="store_true")
+        p.add_argument("--shallow", nargs="*", help="fields where the plan should prefer PS1 over DECaPS")
         if n == "fit":
             p.add_argument("--threads", type=int, default=4)
             p.add_argument("--max-hours", type=float, default=99.0, help="start no new field after this")

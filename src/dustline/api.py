@@ -264,6 +264,8 @@ class Sightline:
             except RuntimeError as e:
                 print(f"law not measured: {e}")
                 law = ensemble.default_law(band_list, reason=str(e).split(" - ")[0])
+                law["mode"] = "law"      # still a law-mode run (R_V assumed, rv_assumed=True); there is no column
+
         run_av = ensemble.dust_run(fit)
         law["bands"] = band_list
         law["n_fitted"] = int(len(fit))
