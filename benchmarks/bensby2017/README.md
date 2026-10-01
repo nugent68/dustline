@@ -101,3 +101,23 @@ cancelled first attempt). XP spectra and all catalogs but DECaPS2 (Data Lab) fro
 - > 30 % outliers (8): mostly sources whose spectroscopic distance puts them well off the clump
   (MOA-2009-BLG-259 at 14.9 kpc, MOA-2010-BLG-049 at 5.7 kpc), and low-extinction fields with an
   assumed R_V.
+
+## The DECaPS 3D map in absolute A_I (2026-10-01; `bensby_stage_b.py zucker`, `stage_b_zucker.txt`)
+
+Zucker et al. (2025) release the map in magnitudes of E(B-V) = A_V / R_V (their Sect. V.2; R_V
+from the stellar inference, mean 3.32 = their Schlafly+16 prior), and model magnitudes as
+M + mu + A_V (R + R_V R') (their Eqn 1; Table 2 gives R, R' per band, normalised to A_V = 1;
+the table note's "R corresponds to R_V = 3.32" is loose - Eqn 1 is what the inference uses, and
+what our clump-vector test 1 used). Hence A_X = E_map x R_V x (R_X + R_V R'_X); DECam i at
+R_V 3.32: 2.254 E_map, and Cousins I (G23 band ratio 0.988): A_I = 2.227 E_map.
+
+- Map A_I at the source distance / Bensby truth: 1.179 +/- 0.118 (median to +/- 0.017, N 77);
+  vs Nataf's clump A_I: 1.134. The map's own conversion over-predicts I-band extinction toward
+  the bulge by ~15-18 %; its vector is unbiased only at R_V 2.97 - the median R_V our XP fits
+  measure in these fields (2.96). A likely reason: the map's A_V is pinned mainly by optical
+  colours, and the bulge optical law is steeper than any one-parameter vector at the R_V that
+  fits I and the NIR (Stage A), so a fixed R_V 3.32 vector inflates A_V.
+- dustline run (bridged part x ANCHOR_CAL 0.96) on the same 70 sources: 1.005 +/- 0.099. Not
+  independent for the bridged sources (the calibration comes from this sample); the 10 sources
+  inside the measured XP run, uncalibrated, give 1.011 +/- 0.111.
+- Per-source scatter is the same for both (~10 %, the truth's noise): the difference is the bias.

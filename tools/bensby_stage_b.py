@@ -220,10 +220,41 @@ def cmd_summary(a):
     print(txt)
 
 
+def cmd_zucker(a):
+    """The DECaPS 3D map (Zucker+25) in absolute A_I: E_map = A_V / R_V (their Sect. V.2, mean R_V 3.32),
+    A_X / A_V = R + R_V R' (their Eqn 1, Table 2), DECam i -> Cousins I with the G23 band ratio."""
+    import numpy as np
+    from dustline import ensemble
+    s = pd.read_csv(os.path.join(BENCH, "stage_b_summary.csv"))
+    rs = lambda v: 1.4826 * np.median(np.abs(v - np.median(v)))   # noqa: E731
+    R, Rp = 0.3529, 0.0982
+    conv = ensemble.band_ratio_at_rv("Cousins_I", 3.32, teff=5500.0, logg=4.0) / ensemble.band_ratio_at_rv("DECam_i", 3.32, teff=5500.0, logg=4.0)
+    per_E = lambda rv: rv * (R + rv * Rp) * conv   # noqa: E731
+    m = s.AI_src.notna() & np.isfinite(s.ebv_decaps_Dsrc) & (s.ebv_decaps_Dsrc > 0)
+    t = s.AI_src.notna() & s.AI_run_src.notna() & (s.n_law > 0)
+    cal = np.where(s.bridged_src.astype(bool), a.anchor_cal, 1.0)
+    both = m & t
+    qa = (per_E(3.32) * s.ebv_decaps_Dsrc / s.AI_src)[both]; qb = (cal * s.AI_run_src / s.AI_src)[both]
+    rvs = np.arange(2.3, 3.81, 0.01)
+    med = np.array([np.median(per_E(rv) * s.ebv_decaps_Dsrc[m] / s.AI_src[m]) for rv in rvs])
+    L = [f"DECaPS 3D map in Cousins I: A_I / E_map = 3.32 x (0.3529 + 3.32 x 0.0982) x {conv:.3f} = {per_E(3.32):.3f} "
+         f"(empirical truth / E_map: {np.median((s.AI_src / s.ebv_decaps_Dsrc)[m]):.3f})",
+         f"  map A_I(D_src) / truth, all {m.sum()}: {np.median((per_E(3.32) * s.ebv_decaps_Dsrc / s.AI_src)[m]):.3f} +/- "
+         f"{rs((per_E(3.32) * s.ebv_decaps_Dsrc / s.AI_src)[m]):.3f} (error of median {1.2533 * rs((per_E(3.32) * s.ebv_decaps_Dsrc / s.AI_src)[m]) / np.sqrt(m.sum()):.3f})",
+         f"  map A_I(D_RC) / Nataf clump A_I: {np.median((per_E(3.32) * s.ebv_decaps_DRC / s.AI_RC)[s.AI_RC.notna() & (s.ebv_decaps_DRC > 0)]):.3f}",
+         f"  same {both.sum()} sources (R_V measured): map {np.median(qa):.3f} +/- {rs(qa):.3f}; dustline run (bridged part x {a.anchor_cal}) "
+         f"{np.median(qb):.3f} +/- {rs(qb):.3f}",
+         f"  R_V at which the map with the Zucker vector is unbiased: {np.interp(1.0, med, rvs):.2f}"]
+    txt = "\n".join(L)
+    open(os.path.join(BENCH, "stage_b_zucker.txt"), "w").write(txt + "\n")
+    print(txt)
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("summary")
+    z = sub.add_parser("zucker"); z.add_argument("--anchor-cal", type=float, default=0.96)
     for n in ("data", "grids", "fit"):
         p = sub.add_parser(n)
         p.add_argument("--jobs", type=int, default=8)
@@ -234,7 +265,7 @@ def main():
             p.add_argument("--threads", type=int, default=4)
             p.add_argument("--max-hours", type=float, default=99.0, help="start no new field after this")
     a = ap.parse_args()
-    {"data": cmd_data, "grids": cmd_grids, "fit": cmd_fit, "summary": cmd_summary}[a.cmd](a)
+    {"data": cmd_data, "grids": cmd_grids, "fit": cmd_fit, "summary": cmd_summary, "zucker": cmd_zucker}[a.cmd](a)
 
 
 if __name__ == "__main__":

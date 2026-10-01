@@ -1,0 +1,5 @@
+DECaPS 3D map in Cousins I: A_I / E_map = 3.32 x (0.3529 + 3.32 x 0.0982) x 0.988 = 2.227 (empirical truth / E_map: 1.890)
+  map A_I(D_src) / truth, all 77: 1.179 +/- 0.118 (error of median 0.017)
+  map A_I(D_RC) / Nataf clump A_I: 1.134
+  same 70 sources (R_V measured): map 1.179 +/- 0.120; dustline run (bridged part x 0.96) 1.005 +/- 0.099
+  R_V at which the map with the Zucker vector is unbiased: 2.97
