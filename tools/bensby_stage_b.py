@@ -165,9 +165,63 @@ def cmd_fit(a):
                 futs[ex.submit(_fit, e, a.threads)] = e
 
 
+def cmd_summary(a):
+    import numpy as np
+    ev = events()
+    rows = []
+    for r in ev.itertuples(index=False):
+        pf, pe = os.path.join(OUT, f"{r.name}.fit.json"), os.path.join(OUT, f"{r.name}.extinction_I.csv")
+        if not (os.path.exists(pf) and os.path.exists(pe)):
+            continue
+        f = json.load(open(pf))
+        if not f.get("ok"):
+            continue
+        x = pd.read_csv(pe)
+        d = json.load(open(os.path.join(OUT, f"{r.name}.data.json")))
+        row = dict(name=r.name, rv=f["rv"], rv_mad=f["rv_mad"], n_law=f["n_stars"], bands="+".join(sorted({b.split("_")[0] for b in d["bands"]})),
+                   D_last_measured=float(x.D_kpc[~x.bridged.astype(bool)].max()) if (~x.bridged.astype(bool)).any() else np.nan,
+                   minutes=f["seconds"] / 60)
+        for D, tag in ((r.D_src_kpc, "src"), (r.D_RC_kpc, "RC")):
+            if np.isfinite(D):
+                row[f"AI_run_{tag}"] = float(np.interp(D, x.D_kpc, x.A_med))
+                row[f"AI16_run_{tag}"] = float(np.interp(D, x.D_kpc, x.A_16))
+                row[f"AI84_run_{tag}"] = float(np.interp(D, x.D_kpc, x.A_84))
+                row[f"bridged_{tag}"] = bool(np.interp(D, x.D_kpc, x.bridged.astype(float)) > 0.5)
+        rows.append(row)
+    s = ev.merge(pd.DataFrame(rows), on="name", how="inner")
+    s.round(5).to_csv(os.path.join(BENCH, "stage_b_summary.csv"), index=False)
+    rs = lambda v: 1.4826 * np.median(np.abs(v - np.median(v)))   # noqa: E731
+    t = s.AI_src.notna() & s.AI_run_src.notna()
+    L = [f"Stage B: {len(s)} fields fitted; with source truth {t.sum()}"]
+    L.append(f"  R_V per field: median {s.rv.median():.2f}, 16-84 % {s.rv.quantile(.16):.2f}-{s.rv.quantile(.84):.2f} "
+             f"(star-to-star MAD median {s.rv_mad.median():.2f}, N_law median {s.n_law.median():.0f}); last measured bin median "
+             f"{s.D_last_measured.median():.1f} kpc; fit wall time median {s.minutes.median():.0f} min")
+    q = s.AI_run_src[t] / s.AI_src[t]
+    sig_run = 0.5 * (s.AI84_run_src - s.AI16_run_src)[t]
+    z = (s.AI_run_src - s.AI_src)[t] / np.sqrt(sig_run ** 2 + s.e_AI_src[t] ** 2)
+    L.append(f"  A_I,run(D_src) / A_I,src: median {np.median(q):.3f}, robust sd {rs(q):.3f} (relative {rs(q) / np.median(q):.3f}); "
+             f"z = (run - truth) / sqrt(sig_run^2 + sig_truth^2): median {np.median(z):+.2f}, robust sd {rs(z):.2f}, |z|<1 {np.mean(np.abs(z) < 1):.2f}")
+    for lab, m in (("source in the measured run (not bridged)", t & ~s.bridged_src.astype(bool)), ("source in the bridged part", t & s.bridged_src.astype(bool))):
+        if m.sum():
+            qq = (s.AI_run_src / s.AI_src)[m]
+            L.append(f"    {lab:42s}: N {m.sum():3d}  ratio median {np.median(qq):.3f}, robust sd {rs(qq):.3f}")
+    if "ebv_decaps_Dsrc" in s:
+        m = t & np.isfinite(s.ebv_decaps_Dsrc) & (s.ebv_decaps_Dsrc > 0)
+        qm = (s.AI_src / s.ebv_decaps_Dsrc)[m]; qr = (s.AI_run_src / s.AI_src)[m]
+        L.append(f"  same {m.sum()} sources: DECaPS 3D map relative scatter {rs(qm) / np.median(qm):.3f} (after its median A_I/E {np.median(qm):.3f}); "
+                 f"dustline run {rs(qr) / np.median(qr):.3f} (bias {np.median(qr):.3f}); truth error {np.median((s.e_AI_src / s.AI_src)[m]):.3f}")
+    for b, g in s[t].groupby("bands"):
+        qq = (g.AI_run_src / g.AI_src)
+        L.append(f"  bands {b:16s}: N {len(g):3d}  A_I ratio median {np.median(qq):.3f}  R_V median {g.rv.median():.2f}")
+    txt = "\n".join(L)
+    open(os.path.join(BENCH, "stage_b_summary.txt"), "w").write(txt + "\n")
+    print(txt)
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("summary")
     for n in ("data", "grids", "fit"):
         p = sub.add_parser(n)
         p.add_argument("--jobs", type=int, default=8)
@@ -177,7 +231,7 @@ def main():
             p.add_argument("--threads", type=int, default=4)
             p.add_argument("--max-hours", type=float, default=99.0, help="start no new field after this")
     a = ap.parse_args()
-    {"data": cmd_data, "grids": cmd_grids, "fit": cmd_fit}[a.cmd](a)
+    {"data": cmd_data, "grids": cmd_grids, "fit": cmd_fit, "summary": cmd_summary}[a.cmd](a)
 
 
 if __name__ == "__main__":
