@@ -1,0 +1,16 @@
+2901 calibrators; with a DESI map value: 2415
+  A_V in front, Edenhofer (applied):       0.0260
+  total column, Edenhofer (to 1.25 kpc):    0.0774
+  total column, DESI g-r / r-z:             0.0866 / 0.0733
+  total column, SFD x 0.86:                 0.0607
+  fraction in front: Edenhofer profile 0.37, exponential layer (h 125 pc) 0.69
+  missing dust in front of the calibrators (median A_V; f x total - Edenhofer front):
+    vs DESI_gr : Edenhofer profile +0.0004, exponential layer +0.0189
+    vs DESI_rz : Edenhofer profile -0.0046, exponential layer +0.0088
+    vs SFD     : Edenhofer profile -0.0069, exponential layer +0.0068
+  by T_eff (DESI label), missing vs DESI g-r, Edenhofer profile / exponential layer:
+    3500-4500 K: N 1200  +0.0004 / +0.0170   (front E 0.0227, D 129 pc)
+    4500-5500 K: N 1200  +0.0009 / +0.0201   (front E 0.0297, D 194 pc)
+    5500-6500 K: N  468  -0.0002 / +0.0208   (front E 0.0342, D 226 pc)
+    6500-7500 K: N   33  +0.0002 / +0.0244   (front E 0.0250, D 89 pc)
+COSMOS (30'): total column Edenhofer 0.0806, DESI g-r 0.0478, r-z 0.0562, SFD x 0.86 0.0504; dustline column 0.019-0.027
