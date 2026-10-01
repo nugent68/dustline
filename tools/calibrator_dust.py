@@ -53,7 +53,7 @@ def desi_lookup(ra, dec, nside=512):
     pix = hp.ang2pix(nside, np.asarray(ra), np.asarray(dec), lonlat=True)    # RING, as the maps
     for tag, col in (("gr", "EGR"), ("rz", "ERZ")):
         t = fits.getdata(os.path.join(DESI_MAPS, f"desi_dust_{tag}_{nside}.fits"))
-        idx = pd.Series(np.arange(len(t)), index=t["HPXPIXEL"])
+        idx = pd.Series(np.arange(len(t)), index=np.asarray(t["HPXPIXEL"]).astype(np.int64))   # FITS is big-endian
         j = idx.reindex(pix).values
         ok = np.isfinite(j)
         jj = np.where(ok, j, 0).astype(int)
