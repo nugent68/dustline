@@ -47,6 +47,19 @@ CASES = {
         columns=["ra", "dec", "gaia_id"] + [f"mag_{k}" for k in range(1, 14)] + [f"magerr_{k}" for k in range(1, 14)]
         + [f"decaps_fracflux_{k}" for k in range(1, 6)],
         fields=[(267.86642, -33.13517, 0.05), (201.0, -62.5, 0.04), (123.0, -35.0, 0.05), (272.0, -20.0, 0.04)]),
+    "sdss_dr17.apogee2_allstar": dict(helper="datalab", ra_col="ra", dec_col="dec",
+        where=[("teff", ">", 0), ("snr", ">", 30)],
+        columns=["ra", "dec", "gaiaedr3_source_id", "teff", "logg", "fe_h", "fe_h_err", "m_h", "alpha_m", "snr",
+                 "starflag", "telescope"],
+        fields=[(267.86642, -33.13517, 1.0), (266.4, -28.9, 1.0), (180.0, 30.0, 2.0), (56.75, 24.12, 1.0)]),
+    "desi_dr1.mws": dict(helper="datalab", ra_col="target_ra", dec_col="target_dec",
+        where=[("rr_spectype", "==", "STAR"), ("rvs_warn", "==", 0), ("zcat_primary", "==", True)],
+        columns=["source_id", "target_ra", "target_dec", "teff", "teff_err", "logg", "logg_err", "feh", "feh_err",
+                 "alphafe", "snr_med", "survey", "program"],
+        fields=[(150.12, 2.21, 0.5), (180.0, 30.0, 0.5), (240.0, 50.0, 0.5)]),
+    "allwise.source": dict(helper="datalab", ra_col="ra", dec_col="dec", where=None,
+        columns=["ra", "dec", "w1mpro", "w1sigmpro", "w2mpro", "w2sigmpro", "cc_flags", "ext_flg"],
+        fields=[(150.12, 2.21, 0.2), (267.86642, -33.13517, 0.05), (10.0, -45.0, 0.2)]),
     "II/335/galex_ais": dict(helper="vizier", ra_col="RAJ2000", dec_col="DEJ2000", where=None,
         columns=["RAJ2000", "DEJ2000", "FUVmag", "e_FUVmag", "NUVmag", "e_NUVmag", "Fafl", "Nafl", "Fexf", "Nexf", '"E(B-V)"'],
         fields=[(10.0, -45.0, 0.3), (150.12, 2.21, 0.15), (230.0, 60.0, 0.2), (300.0, -60.0, 0.2)]),
@@ -74,16 +87,25 @@ def compare(net: pd.DataFrame, loc: pd.DataFrame, key: list[str]) -> dict:
     xa = np.c_[net[rc].values * cd, net[dc].values]
     xb = np.c_[loc[rc].values * cd, loc[dc].values]
     dist, j = cKDTree(xb).query(xa, distance_upper_bound=0.2 / 3600)
-    if not np.all(np.isfinite(dist)) or len(set(j)) != len(j):
+    if not np.all(np.isfinite(dist)):
         return dict(out, ok=False, why=f"{int((~np.isfinite(dist)).sum())} rows unmatched within 0.2 arcsec")
-    a = net.reset_index(drop=True)
-    b = loc.iloc[j].reset_index(drop=True)
+    if len(set(j)) == len(j):
+        a = net.reset_index(drop=True)
+        b = loc.iloc[j].reset_index(drop=True)
+    else:
+        # duplicate positions (e.g. one star per telescope): pair by rounded position, then every column
+        def keyed(d):
+            k = d.assign(_r=d[rc].round(5), _d=d[dc].round(5))
+            rest = [c for c in d.columns if c not in (rc, dc)]
+            k[rest] = k[rest].astype(str)
+            return d.loc[k.sort_values(["_r", "_d"] + rest).index].reset_index(drop=True)
+        a, b = keyed(net), keyed(loc)
     bad, maxd = {}, {}
     for c in a.columns:
         x, y = a[c], b[c]
         if pd.api.types.is_numeric_dtype(x) and pd.api.types.is_numeric_dtype(y):
             xv, yv = x.astype(float).values, y.astype(float).values
-            tol = 0.5 * 10.0 ** -_decimals(xv) + 1e-6 * np.abs(xv)
+            tol = 0.505 * 10.0 ** -_decimals(xv) + 1e-6 * np.abs(xv)     # rounding (float32 -> decimal slack)
             with np.errstate(invalid="ignore"):
                 ok = (np.isnan(xv) & np.isnan(yv)) | (np.abs(xv - yv) <= tol)
             if np.isfinite(xv - yv).any():

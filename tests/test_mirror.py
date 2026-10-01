@@ -270,3 +270,21 @@ def test_xp_csv_round_trip(tmp_path, monkeypatch):
     with pytest.raises(local.MirrorError):
         local.xp_csv_rows([int(sid[-1]) + 1])
     local._MANIFESTS.clear()
+
+
+def test_postgres_nan_semantics_and_replace(mirror):
+    """Data Lab (PostgreSQL) keeps NaN rows under `x > c`; SQL NULL logic drops them."""
+    root, cat = mirror
+    mf = root / "synth" / "manifest.json"
+    d = json.loads(mf.read_text())
+    d["tables"]["synth.object"]["nan_semantics"] = "postgres"
+    d["tables"]["synth.object"]["columns"]["id"]["replace"] = [int(cat.id.min()), -1]
+    mf.write_text(json.dumps(d))
+    local._MANIFESTS.clear()
+    pg = datalab.box_query("synth.object", ["err_g", "id"], RA0, DEC0, 0.2, where=[("err_g", ">", 0.0)])
+    assert pg.err_g.isna().any()
+    assert (pg.err_g.dropna() > 0).all()
+    lt = datalab.box_query("synth.object", ["err_g", "id"], RA0, DEC0, 0.2, where=[("err_g", "<", 1.0)])
+    assert lt.err_g.notna().all()
+    allrows = datalab.box_query("synth.object", ["id"], RA0, DEC0, 0.5)
+    assert int(cat.id.min()) not in set(allrows.id) and (-1 in set(allrows.id) or len(allrows) < len(cat))

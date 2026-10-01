@@ -270,6 +270,9 @@ class Table:
                 v = np.where(v == spec["null_value"], np.nan, v.astype(float))
             if spec.get("bool_text"):
                 v = np.asarray(v).astype(str) == "True"
+            if "replace" in spec:                   # e.g. a missing id stored as 0 where the service writes -2**63
+                old, new = spec["replace"]
+                v = np.where(v == old, np.asarray(new, dtype=v.dtype), v)
             data[out] = v
         df = pd.DataFrame(data, index=range(n)) if n else pd.DataFrame({o: [] for _, o in wanted})
         # the network frames come from pd.read_csv: reproduce its dtypes exactly
@@ -297,7 +300,12 @@ class Table:
             with np.errstate(invalid="ignore"):
                 ok = _OPS[op](v, val)
             if np.asarray(v).dtype.kind == "f":
-                ok &= np.isfinite(v)                    # SQL: NULL compares false
+                nan = np.isnan(v)
+                if self.spec.get("nan_semantics") == "postgres":
+                    # Data Lab is PostgreSQL: NaN sorts above every number, so `x > 0` keeps NaN rows
+                    ok = np.where(nan, op in (">", ">=", "!="), ok)
+                else:
+                    ok &= ~nan                          # SQL: NULL compares false
             keep &= ok
         return keep
 

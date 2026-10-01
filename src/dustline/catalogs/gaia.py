@@ -245,8 +245,9 @@ def fetch_xp(ws: Workspace, gaia: pd.DataFrame, chunk: int = 200) -> None:
     if out.exists():
         done = set(pd.read_csv(out, usecols=["source_id"]).source_id.astype(int))
     todo = [i for i in ids if i not in done]
-    print(f"XP: {len(ids)} sources, {len(done)} fetched, {len(todo)} to go "
-          f"(~{len(todo) * 1.8 / 60:.0f} min)", flush=True)
+    from . import local as _local
+    eta = "" if _local.table("gaiadr3.xp_continuous_mean_spectrum") else f" (~{len(todo) * 1.8 / 60:.0f} min)"
+    print(f"XP: {len(ids)} sources, {len(done)} fetched, {len(todo)} to go{eta}", flush=True)
     header_written = out.exists()
     from . import local
     if todo:
