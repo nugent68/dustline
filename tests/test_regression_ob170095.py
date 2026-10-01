@@ -77,7 +77,8 @@ def test_law_rv_regression(law):
 def test_clump_anchor_regression(anchor):
     assert anchor is not None
     assert anchor["E_JK"] == pytest.approx(0.44, abs=0.03)
-    assert anchor["AV_column"] == pytest.approx(2.71, abs=0.15)
+    assert anchor["AV_column_raw"] == pytest.approx(2.71, abs=0.15)
+    assert anchor["AV_column"] == pytest.approx(2.60, abs=0.15)   # x ANCHOR_CAL 0.96
     assert anchor["D_RC"] == pytest.approx(8.4, abs=0.3)
 
 
@@ -94,7 +95,7 @@ def test_dust_run_regression(fit, law, anchor):
     run = bridge_to_clump(dust_run(fit), anchor)
     ratio = band_ratio_at_rv("I", law["rv"])
     assert ratio == pytest.approx(0.610, abs=0.01)
-    ref = {1.0: 0.76, 2.0: 1.23, 3.0: 1.42, 4.0: 1.46, 5.0: 1.71, 8.0: 1.68, 12.0: 1.64}
+    ref = {1.0: 0.76, 2.0: 1.23, 3.0: 1.42, 4.0: 1.46, 5.0: 1.71, 8.0: 1.62, 12.0: 1.57}   # bridged part x ANCHOR_CAL 0.96 (was 1.68, 1.64)
     for D, expected in ref.items():
         r = run[np.isclose(run.D_kpc, D)].iloc[0]
         assert r.AV_med * ratio == pytest.approx(expected, abs=0.04), D

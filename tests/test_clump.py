@@ -37,12 +37,24 @@ def test_find_clump_recovers_column():
     from dustline.clump import find_clump
     law = _fake_law()
     stars = _fake_field()
-    anchor = find_clump(stars, law, "2MASS_J", "2MASS_Ks")
+    anchor = find_clump(stars, law, "2MASS_J", "2MASS_Ks", cal=1.0)
     assert anchor is not None
     assert anchor["E_JK"] == pytest.approx(0.75, abs=0.08)
     # A_Ks = E_JK * rK/(rJ-rK) = 0.75 * 0.5625; A_V = A_Ks / 0.09
     assert anchor["AV_column"] == pytest.approx(0.75 * 0.09 / 0.16 / 0.09, rel=0.12)
     assert anchor["D_RC"] == pytest.approx(8.2, abs=0.8)
+
+
+@pytest.mark.skipif(not HAS_ASSETS, reason="model assets not in the local cache")
+def test_find_clump_calibration():
+    from dustline.clump import ANCHOR_CAL, find_clump
+    law, stars = _fake_law(), _fake_field()
+    raw = find_clump(stars, law, "2MASS_J", "2MASS_Ks", cal=1.0)
+    a = find_clump(stars, law, "2MASS_J", "2MASS_Ks")
+    assert a["cal"] == ANCHOR_CAL
+    assert a["AV_column"] == pytest.approx(ANCHOR_CAL * raw["AV_column"], rel=1e-9)
+    assert a["AV_column_raw"] == pytest.approx(raw["AV_column"], rel=1e-9)
+    assert a["E_JK"] == raw["E_JK"]
 
 
 @pytest.mark.skipif(not HAS_ASSETS, reason="model assets not in the local cache")

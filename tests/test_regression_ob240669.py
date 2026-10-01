@@ -78,7 +78,8 @@ def test_law_rv_regression(law):
 def test_clump_anchor_regression(anchor):
     assert anchor is not None
     assert anchor["E_JK"] == pytest.approx(0.52, abs=0.03)
-    assert anchor["AV_column"] == pytest.approx(3.34, abs=0.15)
+    assert anchor["AV_column_raw"] == pytest.approx(3.34, abs=0.15)
+    assert anchor["AV_column"] == pytest.approx(3.21, abs=0.15)   # x ANCHOR_CAL 0.96
     assert anchor["D_RC"] == pytest.approx(6.1, abs=0.3)
 
 

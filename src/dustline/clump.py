@@ -10,12 +10,22 @@ Method (port of the research clump_anchor/vvv_clump work):
 - E(J-Ks) -> A_Ks with the MEASURED law ratios (A_J/A_V, A_Ks/A_V);
 - D_RC from the dereddened Ks.
 
+Calibration: the column is multiplied by ANCHOR_CAL (0.96; $DUSTLINE_ANCHOR_CAL or the
+``cal`` argument override). Against the 85 microlensed bulge dwarfs of Bensby et al. (2017)
+(benchmarks/bensby2017, Stage A/B) the J-Ks anchor converted to Cousins I is 1.050 x the
+spectroscopic source A_I and 1.017 x the OGLE-III clump A_I of Nataf et al. (2013); the gap
+between the two is the sources' median E(V-I) offset from their clump (-0.035 mag), which may be
+dust or the microlensing colour calibration, so 0.96 sits between 1/1.050 and 1/1.017. The
+uncalibrated values are kept (A_Ks_raw, AV_column_raw) and a 2 % calibration error is added.
+
 Sanity gates: the anchor is only accepted if the window is well populated and
 D_RC lands at a bulge-like distance (5-12 kpc); otherwise no bridge is applied
 (the run then simply stops at the last parallax bin).
 """
 
 from __future__ import annotations
+
+import os
 
 import numpy as np
 import pandas as pd
@@ -26,6 +36,8 @@ CLUMP_MODEL = (4700.0, 2.5, 0.0)   # Teff, log g, [M/H]
 LOGL_RC = 1.72                     # log L/L_sun that gives M_Ks ~ -1.61 (Nataf+13-like)
 D_RC_RANGE = (5.0, 12.0)           # accepted bulge distances (kpc)
 MIN_WINDOW = 60                    # stars in the clump window
+ANCHOR_CAL = float(os.environ.get("DUSTLINE_ANCHOR_CAL", 0.96))   # see the module docstring
+ANCHOR_CAL_ERR = 0.02              # relative calibration uncertainty, added in quadrature
 
 
 def clump_intrinsic(j_band: str, ks_band: str) -> dict:
@@ -55,11 +67,13 @@ def nir_bands(stars: pd.DataFrame, plan_nir: str, min_pairs: int = 500) -> tuple
     return "2MASS_J", "2MASS_Ks"
 
 
-def find_clump(stars: pd.DataFrame, law: dict, j_band: str, ks_band: str) -> dict | None:
+def find_clump(stars: pd.DataFrame, law: dict, j_band: str, ks_band: str,
+               cal: float | None = None) -> dict | None:
     """Locate the red clump in (J-Ks, Ks) and derive the bulge column.
 
     stars: the field table with mag_<j_band>, mag_<ks_band> columns (ALL stars,
     not just the XP subset). law: the measured-law dict (ratios_av per A_V).
+    cal: column calibration factor (default ANCHOR_CAL; 1.0 = the uncalibrated J-Ks column).
     Returns the anchor dict, or None when no credible clump is found.
     """
     from scipy.ndimage import gaussian_filter
@@ -107,18 +121,22 @@ def find_clump(stars: pd.DataFrame, law: dict, j_band: str, ks_band: str) -> dic
     E_JK = jk_rc - intr["JK0"]
     if E_JK < 0.15:                     # essentially unreddened peak: a disk feature
         return None
-    A_Ks = E_JK * rK / (rJ - rK)        # measured-law A_Ks from the colour excess
+    cal = ANCHOR_CAL if cal is None else float(cal)
+    A_Ks_raw = E_JK * rK / (rJ - rK)    # measured-law A_Ks from the colour excess
+    A_Ks = cal * A_Ks_raw               # calibrated (Bensby+17 microlensed dwarfs; module docstring)
     A_V_col = A_Ks / rK
     D_RC = 10 ** ((ks_rc - A_Ks - intr["MKs"]) / 5.0 - 2.0)
     if not (D_RC_RANGE[0] < D_RC < D_RC_RANGE[1]):
         return None
-    # differential-extinction spread across the clump window, in A_V
-    sig_AV = mad_jk * rK / (rJ - rK) / rK
+    # differential-extinction spread across the clump window, in A_V, (+) the calibration error
+    sig_AV = cal * mad_jk * rK / (rJ - rK) / rK
+    sig_AV = float(np.hypot(max(sig_AV, 0.1), ANCHOR_CAL_ERR * A_V_col if cal != 1.0 else 0.0))
 
     return dict(jk_rc=jk_rc, ks_rc=ks_rc, mad_jk=mad_jk, n_window=int(w.sum()),
                 JK0=float(intr["JK0"]), MKs=float(intr["MKs"]),
-                E_JK=float(E_JK), A_Ks=float(A_Ks),
-                AV_column=float(A_V_col), AV_column_err=float(max(sig_AV, 0.1)),
+                E_JK=float(E_JK), A_Ks=float(A_Ks), A_Ks_raw=float(A_Ks_raw),
+                AV_column=float(A_V_col), AV_column_raw=float(A_Ks_raw / rK), cal=cal,
+                AV_column_err=sig_AV,
                 D_RC=float(D_RC), j_band=j_band, ks_band=ks_band,
                 clump_model=dict(teff=CLUMP_MODEL[0], logg=CLUMP_MODEL[1],
                                  mh=CLUMP_MODEL[2], logL=LOGL_RC))
