@@ -1,0 +1,19 @@
+{
+ "name": "MOA-2011-BLG-104S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0268.59367_dec-029.83380_r5_b51f4ceb",
+ "bands": [
+  "DECam_Y",
+  "DECam_g",
+  "DECam_i",
+  "DECam_r",
+  "DECam_z",
+  "VISTA_H",
+  "VISTA_J",
+  "VISTA_Ks"
+ ],
+ "spectro": "none",
+ "n_gaia": 27458,
+ "n_xp": 5998,
+ "seconds": 64.7
+}

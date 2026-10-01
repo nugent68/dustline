@@ -1,0 +1,19 @@
+{
+ "name": "MOA-2012-BLG-187S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0272.00900_dec-029.46985_r5_b51f4ceb",
+ "bands": [
+  "DECam_Y",
+  "DECam_g",
+  "DECam_i",
+  "DECam_r",
+  "DECam_z",
+  "VISTA_H",
+  "VISTA_J",
+  "VISTA_Ks"
+ ],
+ "spectro": "none",
+ "n_gaia": 25227,
+ "n_xp": 2971,
+ "seconds": 37.2
+}

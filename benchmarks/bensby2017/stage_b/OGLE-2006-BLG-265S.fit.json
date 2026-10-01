@@ -1,0 +1,32 @@
+{
+ "name": "OGLE-2006-BLG-265S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0271.82867_dec-027.79519_r5_b51f4ceb",
+ "rv": 3.054249743375495,
+ "rv_mad": 0.3603934619617165,
+ "n_stars": 81,
+ "mode": "law",
+ "clump_anchor": {
+  "jk_rc": 0.8779000000000003,
+  "ks_rc": 13.0515,
+  "mad_jk": 0.06805133999999942,
+  "n_window": 1757,
+  "JK0": 0.6171093150149279,
+  "MKs": -1.607343763732331,
+  "E_JK": 0.2607906849850724,
+  "A_Ks": 0.1742925984954445,
+  "AV_column": 1.6481653883415555,
+  "AV_column_err": 0.4300761862897145,
+  "D_RC": 7.886970802008198,
+  "j_band": "VISTA_J",
+  "ks_band": "VISTA_Ks",
+  "clump_model": {
+   "teff": 4700.0,
+   "logg": 2.5,
+   "mh": 0.0,
+   "logL": 1.72
+  }
+ },
+ "ratio_I": 0.6007570674565245,
+ "seconds": 4499.2
+}

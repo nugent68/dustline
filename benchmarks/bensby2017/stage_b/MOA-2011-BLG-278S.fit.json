@@ -1,0 +1,32 @@
+{
+ "name": "MOA-2011-BLG-278S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0268.54717_dec-030.08932_r5_b51f4ceb",
+ "rv": 2.6755815979667013,
+ "rv_mad": 0.29823358456857646,
+ "n_stars": 147,
+ "mode": "law",
+ "clump_anchor": {
+  "jk_rc": 1.0045000000000002,
+  "ks_rc": 13.14,
+  "mad_jk": 0.07264739999999924,
+  "n_window": 3624,
+  "JK0": 0.6171093150149279,
+  "MKs": -1.607343763732331,
+  "E_JK": 0.38739068498507223,
+  "A_Ks": 0.23098491512384886,
+  "AV_column": 2.7250332677103315,
+  "AV_column_err": 0.5110256634598376,
+  "D_RC": 8.003349262531398,
+  "j_band": "VISTA_J",
+  "ks_band": "VISTA_Ks",
+  "clump_model": {
+   "teff": 4700.0,
+   "logg": 2.5,
+   "mh": 0.0,
+   "logL": 1.72
+  }
+ },
+ "ratio_I": 0.5667364992508612,
+ "seconds": 5777.5
+}

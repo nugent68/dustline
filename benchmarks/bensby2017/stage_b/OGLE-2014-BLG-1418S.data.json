@@ -1,0 +1,19 @@
+{
+ "name": "OGLE-2014-BLG-1418S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0273.69842_dec-026.41081_r5_1d39ce5e",
+ "bands": [
+  "2MASS_H",
+  "2MASS_J",
+  "2MASS_Ks",
+  "PS1_g",
+  "PS1_i",
+  "PS1_r",
+  "PS1_y",
+  "PS1_z"
+ ],
+ "spectro": "none",
+ "n_gaia": 25546,
+ "n_xp": 2738,
+ "seconds": 8.0
+}

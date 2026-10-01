@@ -1,0 +1,19 @@
+{
+ "name": "MOA-2012-BLG-410S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0272.59425_dec-025.17134_r5_cbc9af06",
+ "bands": [
+  "2MASS_H",
+  "2MASS_J",
+  "2MASS_Ks",
+  "PS1_g",
+  "PS1_i",
+  "PS1_r",
+  "PS1_y",
+  "PS1_z"
+ ],
+ "spectro": "none",
+ "n_gaia": 22322,
+ "n_xp": 2022,
+ "seconds": 23.8
+}

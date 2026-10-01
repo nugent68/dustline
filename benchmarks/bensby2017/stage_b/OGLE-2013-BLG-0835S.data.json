@@ -1,0 +1,19 @@
+{
+ "name": "OGLE-2013-BLG-0835S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0268.24746_dec-029.09919_r5_b51f4ceb",
+ "bands": [
+  "DECam_Y",
+  "DECam_g",
+  "DECam_i",
+  "DECam_r",
+  "DECam_z",
+  "VISTA_H",
+  "VISTA_J",
+  "VISTA_Ks"
+ ],
+ "spectro": "none",
+ "n_gaia": 27901,
+ "n_xp": 3700,
+ "seconds": 39.8
+}

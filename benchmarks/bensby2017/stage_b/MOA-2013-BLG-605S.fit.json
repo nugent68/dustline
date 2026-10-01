@@ -1,0 +1,32 @@
+{
+ "name": "MOA-2013-BLG-605S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0269.67867_dec-029.39822_r5_b51f4ceb",
+ "rv": 2.9534685050200444,
+ "rv_mad": 0.35892202328858724,
+ "n_stars": 222,
+ "mode": "law",
+ "clump_anchor": {
+  "jk_rc": 0.9605999999999995,
+  "ks_rc": 13.1454,
+  "mad_jk": 0.07561259999999759,
+  "n_window": 2837,
+  "JK0": 0.6171093150149279,
+  "MKs": -1.607343763732331,
+  "E_JK": 0.3434906849850715,
+  "A_Ks": 0.22440561211909812,
+  "AV_column": 2.228025778167557,
+  "AV_column_err": 0.4904552854514485,
+  "D_RC": 8.04762313249911,
+  "j_band": "VISTA_J",
+  "ks_band": "VISTA_Ks",
+  "clump_model": {
+   "teff": 4700.0,
+   "logg": 2.5,
+   "mh": 0.0,
+   "logL": 1.72
+  }
+ },
+ "ratio_I": 0.5925557408538653,
+ "seconds": 5202.2
+}

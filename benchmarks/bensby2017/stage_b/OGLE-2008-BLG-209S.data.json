@@ -1,0 +1,19 @@
+{
+ "name": "OGLE-2008-BLG-209S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0271.20767_dec-029.70922_r5_b51f4ceb",
+ "bands": [
+  "DECam_Y",
+  "DECam_g",
+  "DECam_i",
+  "DECam_r",
+  "DECam_z",
+  "VISTA_H",
+  "VISTA_J",
+  "VISTA_Ks"
+ ],
+ "spectro": "none",
+ "n_gaia": 23814,
+ "n_xp": 2901,
+ "seconds": 46.9
+}

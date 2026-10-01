@@ -1,0 +1,9 @@
+Stage B: 91 fields fitted; with source truth 83
+  R_V per field: median 2.99, 16-84 % 2.83-3.19 (star-to-star MAD median 0.32, N_law median 174); last measured bin median 5.6 kpc; fit wall time median 54 min
+  A_I,run(D_src) / A_I,src: median 1.043, robust sd 0.109 (relative 0.104); z = (run - truth) / sqrt(sig_run^2 + sig_truth^2): median +0.16, robust sd 0.45, |z|<1 0.90
+    source in the measured run (not bridged)  : N  10  ratio median 1.011, robust sd 0.111
+    source in the bridged part                : N  73  ratio median 1.050, robust sd 0.113
+  same 77 sources: DECaPS 3D map relative scatter 0.098 (after its median A_I/E 1.890); dustline run 0.104 (bias 1.043); truth error 0.104
+  bands 2MASS+DECam     : N   1  A_I ratio median 1.322  R_V median 3.40
+  bands 2MASS+PS1       : N   6  A_I ratio median 1.051  R_V median 3.49
+  bands DECam+VISTA     : N  76  A_I ratio median 1.037  R_V median 2.96

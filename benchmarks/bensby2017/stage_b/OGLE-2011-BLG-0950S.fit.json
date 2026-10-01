@@ -1,0 +1,32 @@
+{
+ "name": "OGLE-2011-BLG-0950S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0269.31925_dec-032.66588_r5_b51f4ceb",
+ "rv": 3.2062972006191237,
+ "rv_mad": 0.3162936904637689,
+ "n_stars": 237,
+ "mode": "law",
+ "clump_anchor": {
+  "jk_rc": 0.9785000000000004,
+  "ks_rc": 13.2648,
+  "mad_jk": 0.06478962000000175,
+  "n_window": 1795,
+  "JK0": 0.6171093150149279,
+  "MKs": -1.607343763732331,
+  "E_JK": 0.36139068498507243,
+  "A_Ks": 0.24987576642420103,
+  "AV_column": 2.2144600496963656,
+  "AV_column_err": 0.3970053216256496,
+  "D_RC": 8.403372196766842,
+  "j_band": "VISTA_J",
+  "ks_band": "VISTA_Ks",
+  "clump_model": {
+   "teff": 4700.0,
+   "logg": 2.5,
+   "mh": 0.0,
+   "logL": 1.72
+  }
+ },
+ "ratio_I": 0.6121533539857126,
+ "seconds": 3235.0
+}

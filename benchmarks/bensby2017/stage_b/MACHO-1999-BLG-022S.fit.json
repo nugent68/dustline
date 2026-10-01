@@ -1,0 +1,32 @@
+{
+ "name": "MACHO-1999-BLG-022S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0271.27200_dec-028.57825_r5_b51f4ceb",
+ "rv": 3.3207722761938285,
+ "rv_mad": 0.3983614762651888,
+ "n_stars": 53,
+ "mode": "law",
+ "clump_anchor": {
+  "jk_rc": 0.8562000000000003,
+  "ks_rc": 13.0508,
+  "mad_jk": 0.06256572000000035,
+  "n_window": 1968,
+  "JK0": 0.6171093150149279,
+  "MKs": -1.607343763732331,
+  "E_JK": 0.23909068498507235,
+  "A_Ks": 0.16650152025419862,
+  "AV_column": 1.4428492801256954,
+  "AV_column_err": 0.37756763325255654,
+  "D_RC": 7.912768294546281,
+  "j_band": "VISTA_J",
+  "ks_band": "VISTA_Ks",
+  "clump_model": {
+   "teff": 4700.0,
+   "logg": 2.5,
+   "mh": 0.0,
+   "logL": 1.72
+  }
+ },
+ "ratio_I": 0.6200439999237651,
+ "seconds": 3198.8
+}

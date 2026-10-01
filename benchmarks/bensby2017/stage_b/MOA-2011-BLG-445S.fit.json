@@ -1,0 +1,32 @@
+{
+ "name": "MOA-2011-BLG-445S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0271.19013_dec-028.59557_r5_b51f4ceb",
+ "rv": 3.317906234452802,
+ "rv_mad": 0.4849389481209526,
+ "n_stars": 40,
+ "mode": "law",
+ "clump_anchor": {
+  "jk_rc": 0.8548500000000008,
+  "ks_rc": 13.03195,
+  "mad_jk": 0.0641965800000005,
+  "n_window": 1964,
+  "JK0": 0.6171093150149279,
+  "MKs": -1.607343763732331,
+  "E_JK": 0.23774068498507284,
+  "A_Ks": 0.1686845141500262,
+  "AV_column": 1.4373832422262178,
+  "AV_column_err": 0.3881333491826576,
+  "D_RC": 7.836494803038018,
+  "j_band": "VISTA_J",
+  "ks_band": "VISTA_Ks",
+  "clump_model": {
+   "teff": 4700.0,
+   "logg": 2.5,
+   "mh": 0.0,
+   "logL": 1.72
+  }
+ },
+ "ratio_I": 0.6198531005008324,
+ "seconds": 3227.6
+}

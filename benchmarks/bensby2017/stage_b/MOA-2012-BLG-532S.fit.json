@@ -1,0 +1,32 @@
+{
+ "name": "MOA-2012-BLG-532S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0269.67137_dec-030.03661_r5_b51f4ceb",
+ "rv": 2.8323466038215255,
+ "rv_mad": 0.28614165852170187,
+ "n_stars": 292,
+ "mode": "law",
+ "clump_anchor": {
+  "jk_rc": 0.9695999999999998,
+  "ks_rc": 13.0906,
+  "mad_jk": 0.07235087999999992,
+  "n_window": 2615,
+  "JK0": 0.6171093150149279,
+  "MKs": -1.607343763732331,
+  "E_JK": 0.35249068498507186,
+  "A_Ks": 0.22278259790189373,
+  "AV_column": 2.362313069369205,
+  "AV_column_err": 0.48487927960876803,
+  "D_RC": 7.852939166536588,
+  "j_band": "VISTA_J",
+  "ks_band": "VISTA_Ks",
+  "clump_model": {
+   "teff": 4700.0,
+   "logg": 2.5,
+   "mh": 0.0,
+   "logL": 1.72
+  }
+ },
+ "ratio_I": 0.5819257693131823,
+ "seconds": 4803.0
+}

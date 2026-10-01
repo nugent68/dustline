@@ -1,0 +1,32 @@
+{
+ "name": "MOA-2010-BLG-285S",
+ "ok": true,
+ "workspace": "/global/cfs/projectdirs/newera/dustline_cache/sightlines/ra+0269.20067_dec-030.01096_r5_b51f4ceb",
+ "rv": 2.8568413682801594,
+ "rv_mad": 0.2901753197449372,
+ "n_stars": 291,
+ "mode": "law",
+ "clump_anchor": {
+  "jk_rc": 1.0100499999999997,
+  "ks_rc": 13.1605,
+  "mad_jk": 0.07954148999999897,
+  "n_window": 2968,
+  "JK0": 0.6171093150149279,
+  "MKs": -1.607343763732331,
+  "E_JK": 0.39294068498507173,
+  "A_Ks": 0.24870604891815748,
+  "AV_column": 2.605183359393812,
+  "AV_column_err": 0.5273573698209926,
+  "D_RC": 8.013597826297202,
+  "j_band": "VISTA_J",
+  "ks_band": "VISTA_Ks",
+  "clump_model": {
+   "teff": 4700.0,
+   "logg": 2.5,
+   "mh": 0.0,
+   "logL": 1.72
+  }
+ },
+ "ratio_I": 0.5841483105312573,
+ "seconds": 4880.2
+}

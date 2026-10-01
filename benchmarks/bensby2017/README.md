@@ -73,3 +73,31 @@ The dustline clump anchor (J-Ks, `clump.find_clump`) at all 91 events, no XP spe
   median A_I/E_map (1.89) 9.8 %; dustline anchor 12.0 %; Nataf's clump A_I 8.2 %; truth error
   10.4 %. All at the noise floor. The map's ABSOLUTE bias still needs its E -> A_I conversion
   (Zucker+25 Table 2 units) - not yet done.
+
+## Stage B results (2026-10-01; NERSC mirror, `tools/bensby_stage_b.py`, `stage_b/`, `stage_b_summary.{csv,txt}`)
+
+Full `dustline run`s (5', parallax errors x1.7) at all 91 events on one Perlmutter node (job
+59163864, all fields in parallel, 2 threads each; ~2 h wall, ~2.5 node-hours on m2218 including a
+cancelled first attempt). XP spectra and all catalogs but DECaPS2 (Data Lab) from the mirror.
+
+- Two more package fixes: a law-mode field without enough A_V >= 2 stars to measure R_V crashed at
+  the end of `run` (the fallback law said mode 'column' with no column; 7 low-extinction fields);
+  OGLE-2014-BLG-1418 sits where DECaPS returns nothing (2MASS-only, no star passed the run cuts) and
+  was rerun with PS1 (`--shallow`, `prefer_deep=False`).
+- R_V measured in 84 fields: median 2.96 [2.83, 3.20] (star-to-star MAD 0.32, ~170 stars per field);
+  assumed 3.1 in 7. The measured profile reaches 5.6 kpc (median); beyond it the run is bridged to
+  the clump anchor.
+- A_I of the run at the source's spectroscopic distance vs the truth (83 sources):
+  1.043 x truth, relative scatter 10.4 % (= the truth's own error, 10.4 %).
+  - fields with measured R_V: 1.031 +/- 0.111 (N 76); with assumed R_V: 1.145 +/- 0.22 (N 7);
+  - sources inside the measured profile: 1.011 +/- 0.111 (N 10); in the bridged part:
+    1.050 +/- 0.113 (N 73) - the ~4 % anchor bias of Stage A;
+  - z = (run - truth) / sqrt(sigma_run^2 + sigma_truth^2): median +0.16, robust sd 0.45, 90 % within
+    1 sigma: the combined errors are conservative by ~2x (likely the truth's assumed 0.05 mag
+    microlensing-colour error and the run's 16-84 % band).
+- Same 77 sources, the DECaPS 3D map (Zucker+25), scaled by its median A_I/E: 9.8 % scatter vs the
+  run's 10.4 %. Per source the two are indistinguishable at this truth precision; the map's absolute
+  bias is still to be set from its E -> A_I conversion.
+- > 30 % outliers (8): mostly sources whose spectroscopic distance puts them well off the clump
+  (MOA-2009-BLG-259 at 14.9 kpc, MOA-2010-BLG-049 at 5.7 kpc), and low-extinction fields with an
+  assumed R_V.
