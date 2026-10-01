@@ -42,6 +42,25 @@ with the service.
 | PS1 DR2 | — | — | not mirrored (no bulk dump); MAST |
 | `ls_dr10.tractor` | — | — | not done yet (cosmo `legacysurvey/dr10` sweeps) |
 
+## 3D dust map: Edenhofer et al. (2023)
+
+`edenhofer_2023/mean_and_std_healpix.fits`: the main map (mean and std of the differential
+extinction density, HEALPix, 69 pc to 1.25 kpc), added 2026-10-01. The directory follows the
+`dustmaps` layout (`<data_dir>/edenhofer_2023/<file>`), so any `dustmaps` user can read it in place:
+
+```python
+from dustmaps.config import config
+config["data_dir"] = "/global/cfs/projectdirs/newera/surveys"
+from dustmaps.edenhofer2023 import Edenhofer2023Query
+q = Edenhofer2023Query(integrated=True)        # integrated E (ZGR23 units; A_V ~ 2.8 E)
+```
+
+In dustline it is used only by `tools/build_template_corrections.py` (the `fit` stage, via
+`calib.map_extinction`). That code looks in `$DUSTLINE_CACHE_DIR/dustmaps`, so point it here with
+`ln -s /global/cfs/projectdirs/newera/surveys/edenhofer_2023 $DUSTLINE_CACHE_DIR/dustmaps/edenhofer_2023`.
+`dustmaps` itself is not installed in `_env` (`pip install dustmaps` if needed). This is a map, not a
+catalog, so it has no `manifest.json` and is not read by the local-mirror backend.
+
 ## Layout
 
 - `<survey>/manifest.json` plus data: position tables are HEALPix nside-32 NESTED files, with rows sorted by the nside-4096 pixel (`_HPX`, or the Gaia `source_id >> 35`).

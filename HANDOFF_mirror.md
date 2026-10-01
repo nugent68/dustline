@@ -37,6 +37,12 @@ the manifest's `status` is `complete`.
 | `desi_dr1.mws` | `desi_dr1/mws/hp32/` (from `/global/cfs/cdirs/desi/public/dr1/vac/dr1/mws/iron/v1.0/mwsall-pix-iron.fits`) | 4,928 | 888 MB | 6,372,607 | complete. Matches Data Lab except 2 of 1,281 `source_id`s, which Data Lab mis-joined; the mirror follows the VAC |
 | `II/335/galex_ais` (GUVcat) | `galex/guvcat_ais/hp32/` (from the MAST HLSP GUVcat AIS CSVs) | 10,068 | 4.8 GB | 82,992,062 | **partial: not used.** About 1 % of sources in tile overlaps are a different measurement than VizieR II/335. Undecided whether to accept it |
 
+Also in the root, **not a catalog** (no manifest; not read by the mirror backend):
+
+| what | location | notes |
+|---|---|---|
+| Edenhofer et al. (2023) 3D dust map, main flavor | `edenhofer_2023/mean_and_std_healpix.fits` (added 2026-10-01) | `dustmaps` layout. Read with `config["data_dir"] = "/global/cfs/projectdirs/newera/surveys"` and `Edenhofer2023Query(integrated=True)`. Used by dustline only in `tools/build_template_corrections.py` (`calib.map_extinction`), which reads `$DUSTLINE_CACHE_DIR/dustmaps/edenhofer_2023`, so symlink that to this directory. `dustmaps` is not installed in `_env` |
+
 Conventions:
 - **Position tables:** HEALPix nside 32, NESTED, one file per pixel, rows sorted by the nside-4096 pixel (`_HPX` column).
 - **Gaia tables:** sorted by `source_id`, whose `>> 35` is the level-12 pixel. That matches the star's position pixel for 99.4 % of stars, so cones pad by 2′.
