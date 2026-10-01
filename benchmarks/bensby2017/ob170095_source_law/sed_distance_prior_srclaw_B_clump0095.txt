@@ -1,0 +1,16 @@
+OGLE-2017-BLG-0095 source-distance prior from the g r i z Y + Kp SED (MIST 10 Gyr MS+SGB, A_i free, A_K/A_i 0.178; isochrone points weighted by the Kroupa IMF, xi(m) |dm/dEEP|); bins of 0.1 kpc, each column sums to 1
+source: r 20.00+/-0.06, z 19.06+/-0.06, g 21.29+/-0.08, i 19.41+/-0.08, Y 18.76+/-0.11, K 16.87+/-0.11
+
+P_SED_XP           (measured (XP x NewEra, 333 stars: G23 R_V=3.17 +/- 0.25), column 1.90): median 3.86 kpc, 68% [2.18, 6.18], 95% [1.73, 9.71], P(D >= 6 kpc) = 0.180
+P_SEDcol_XP        (measured (XP x NewEra, 333 stars: G23 R_V=3.17 +/- 0.25), column 1.90): median 3.44 kpc, 68% [2.05, 4.69], 95% [1.70, 5.44], P(D >= 6 kpc) = 0.000
+P_SEDdust_XP       (measured (XP x NewEra, 333 stars: G23 R_V=3.17 +/- 0.25), column 1.90): median 4.30 kpc, 68% [3.46, 6.29], 95% [2.97, 8.28], P(D >= 6 kpc) = 0.194
+
+dust run (XP x NewEra parallax stars, A_i (xp_dust_run.csv)): A_i at D = 1/2/3/4/5/6/8 kpc: 0.77+/-0.35 1.25+/-0.25 1.44+/-0.30 1.47+/-0.33 1.73+/-0.35 1.81+/-0.25 1.69+/-0.27
+  (profile in A_i: used directly, no E(g-i)/A_V conversion; sigma = 16-84 % half-width (+) 0.10 floor)
+
+columns: P_SED_* = SED only (flat priors in D, A_i, isochrone point); P_SEDcol_* = additionally requires A_i >= 0.9 x field column x ramp(D), ramp 0 at 4 kpc -> 1 at 6 kpc (empirical dust run from the Keck-field stars)
+(the column is law-dependent: SF11 1.99, F99 R_V2.5 1.45); P_SEDdust_* = SED x Gaussian P(A_i | D) from the DECaPS 3D dust run (brutus per-star A_V(D) converted through the field's E(g-i)/A_V = 0.63; sigma = star-to-star spread (+) 5 % (+) 0.10).
+Recommended default (2026-09-15): P_SEDdust_SF11 -- it supersedes P_SEDcol_SF11, whose ramp was built on our own weakly constrained 5-band field-star distances; F99_Rv2.5 columns bracket the extinction-law systematic.
+Not included: a stellar-density or optical-depth prior along the sightline (population_prior_xp.py: D^2 n(D) x tau moves the median to ~7 kpc) and the source proper motion (kinematic_prior.py).
+2026-09-18: the marginal over isochrone points is IMF-weighted (Kroupa xi(m) |dm/dEEP|; --no-imf for the old flat-EEP weighting, which over-weighted the turnoff by ~10x relative to a 0.75 Msun dwarf and pulled the posterior ~1 kpc outward).
+2026-09-17 (dustline): P_SEDdust_XP = SED under the MEASURED sightline law (Gaia XP x NewEra fits of 195 stars with A_V >= 2: G23 R_V 3.15 +/- 0.23 star-to-star, band ratios within 3 % of SF11) x P(A_i | D) from the A_i(D) run of 308 Gaia-parallax stars (bridged to the red-clump column 1.86 +/- 0.19 at 8.3 kpc: five clump estimators, g-i, i-Ks, J-Ks, H-Ks and the Ks/i luminosity-function peaks, vvv_column.json). The law is no longer a choice: the F99 R_V 2.5 columns are excluded by the measurement.

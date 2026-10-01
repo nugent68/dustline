@@ -1,0 +1,18 @@
+Stage A: 91 events run, clump anchor found for 91; with source truth 85
+  no failures
+
+1. clump colour: dustline E(J-Ks) - Gonzalez+12 E(J-Ks) (= R_JKVI x Nataf E(V-I)): median -0.013, robust sd 0.025, ratio median 0.962 (N 88)
+   D_RC dustline - Nataf: median -0.22 kpc, robust sd 0.30
+
+2. A_I of the clump / of the source from the dustline anchor under G23(R_V), vs truth:
+     R_V A_I/E(J-Ks)   A_I,anchor / A_I,src   A_I,anchor / A_I,RC(Nataf)   E(V-I) anchor / E(V-I)_src
+     2.5       4.125          1.146 ± 0.141                1.111 ± 0.070                1.115 ± 0.155
+     2.8       3.918          1.088 ± 0.134                1.055 ± 0.067                0.931 ± 0.130
+     3.1       3.779          1.050 ± 0.129                1.017 ± 0.065                0.808 ± 0.112
+     3.4       3.680          1.022 ± 0.126                0.991 ± 0.064                0.719 ± 0.100
+     3.7       3.605          1.001 ± 0.123                0.970 ± 0.063                0.653 ± 0.091
+
+3. truth-implied ratios: A_I,src / E(J-Ks)_RC median 3.599 (robust sd 0.458, error of median 0.062); E(V-I)_src / E(J-Ks)_RC 2.928 (robust sd 0.425)
+   -> G23 R_V that reproduces the median A_I/E(J-Ks): 3.70; E(V-I)/E(J-Ks): 2.69
+
+4. same sources, the DECaPS 3D map: E(V-I)_src / E(B-V)_map(D_src) median 1.561, relative robust sd 0.091; dustline anchor E(J-Ks) route: relative robust sd 0.130 (N 77)
