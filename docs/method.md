@@ -217,6 +217,18 @@ mode is the pinned case (DESI priors, F/G stars): its template A_V zero point is
 
 ## Column mode (|b| > 30°)
 
+**T_eff lock (2026-10-01).** Where the plan has DESI priors, column mode locks each star's T_eff
+to its DESI DR1 label shifted onto the colour scale of the template corrections:
+T = T_DESI − dT(T_DESI, S/N), with dT measured on ~70k DESI dwarfs at |b| > 40° within 1 kpc
+against the Mamajek-locus T_eff of their Edenhofer-dereddened BP−RP (+65..+150 K for
+4250–5750 K, +5..+30 K for 5750–6250 K at S/N > 60; larger at S/N 7–35; below S/N 7 the label is
+only a 250 K prior). The earlier BP−RP colour lock (still `--colour-lock`, and the fallback for
+fields with < 30 DESI labels) reads reddening as coolness and stalls: across 20 high-latitude
+fields it recovers 0.2–0.3 of the DESI stellar-reddening column (Zhou+24), while the
+scale-corrected DESI lock is unbiased against both DESI and SFD × 0.86 (median difference
+0.000–0.004; field scatter 0.015–0.022; benchmarks/column_zero_point). The COSMOS numbers in
+the list below are from the colour-lock era.
+
 No A_V ≥ 2 stars, so R_V is not measurable: G23 at R_V = 3.1 is assumed (and
 held fixed in the per-star fits) and the product is the total foreground
 column, the median A_V of the plx S/N > 5 F/G stars (T_eff ≥ 5500 K) beyond

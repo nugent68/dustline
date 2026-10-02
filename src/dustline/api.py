@@ -20,6 +20,7 @@ from .userphot import UserPhotometry
 
 DEFAULT_RADIUS_ARCMIN = 5.0
 DEFAULT_FILTER = "I"       # Cousins I
+MIN_DESI_LABELS = 30       # column mode: fewer DESI T_eff labels -> BP-RP colour lock (with a warning)
 
 
 class ExtinctionResult:
@@ -145,19 +146,23 @@ class Sightline:
                              (the newera_uvir_cache asset; $DUSTLINE_MODEL_CACHE)
     min_av : float | None    A_V above which a star enters the R_V law average
                              (default 2.0; 0.5 is workable with spectroscopic priors)
-    desi_teff : bool         also use the DESI T_eff label as a locked prior (off: the
-                             label is S/N-dependent by +/-200 K against the colour scale).
-                             In column mode it REPLACES the BP-RP colour lock, which
-                             under-measures the column: over 20 high-latitude fields the
-                             colour-lock column is 0.2-0.3 x the DESI stellar-reddening map
-                             (benchmarks/column_zero_point)
+    desi_teff : bool | None  lock T_eff to the DESI label, put on the template-correction
+                             colour scale (calib.desi_teff_offset; by T_eff and S/N).
+                             None (default): on in column mode where the plan has DESI
+                             priors, off elsewhere. In column mode it replaces the BP-RP
+                             colour lock (False forces the colour lock), which recovers only
+                             0.2-0.3 of the column; over 20 high-latitude fields the
+                             scale-corrected DESI lock is unbiased against the DESI
+                             stellar-reddening map and SFD (benchmarks/column_zero_point).
+                             A field with < MIN_DESI_LABELS labels falls back to the
+                             colour lock at run time (law["teff_lock"] records which)
     """
 
     def __init__(self, ra: float, dec: float, radius_arcmin: float = DEFAULT_RADIUS_ARCMIN,
                  photometry: UserPhotometry | None = None, prefer_deep: bool = True,
                  spectro_priors: bool = True, freeze_offsets: bool = False,
                  uv: bool = True, mir: bool = True, min_av: float | None = None,
-                 desi_teff: bool = False, plx_inflate: float = 1.0):
+                 desi_teff: bool | None = None, plx_inflate: float = 1.0):
         from . import models
 
         self.ra, self.dec = float(ra), float(dec)
@@ -175,7 +180,8 @@ class Sightline:
             self.plan.mir = "none"
         self.freeze_offsets = bool(freeze_offsets)
         self.min_av = min_av
-        self.desi_teff = bool(desi_teff)
+        self.desi_teff = (self.plan.mode == "column" and self.plan.spectro != "none") if desi_teff is None \
+            else bool(desi_teff)
         self.plx_inflate = float(plx_inflate)
         config = dict(optical=self.plan.optical, nir=self.plan.nir,
                       user_phot=str(photometry.path) if photometry else None)
@@ -250,12 +256,20 @@ class Sightline:
 
         # 3. per-star fits with zero-point iteration
         #    (column mode: R_V held at the assumed value - unconstrained at A_V ~ 0.1)
+        use_desi = self.desi_teff
+        n_lab = int(np.isfinite(stars["teff_spec"]).sum()) if "teff_spec" in stars else 0
+        if use_desi and self.plan.mode == "column" and n_lab < MIN_DESI_LABELS:
+            print(f"only {n_lab} DESI T_eff labels in the field: column mode falls back to the BP-RP colour "
+                  "lock, which UNDER-measures the column (0.2-0.3 x; benchmarks/column_zero_point)", flush=True)
+            use_desi = False
+        teff_lock = ("desi_scaled" if use_desi else "colour") if self.plan.mode == "column" else \
+            ("desi_scaled" if use_desi else "free")
         fit = fit_mod.run_fit_with_offsets(
             self.ws, stars, xp, band_list, force=force,
             spectro_priors=(self.plan.spectro != "none") or self.plan.mode == "column",
             freeze_offsets=self.freeze_offsets,
             rv_fixed=ensemble.RV_ASSUMED if self.plan.mode == "column" else None,
-            teff_from_colour=(self.plan.mode == "column" and not self.desi_teff), desi_teff=self.desi_teff,
+            teff_from_colour=(self.plan.mode == "column" and not use_desi), desi_teff=use_desi,
             plx_inflate=self.plx_inflate)
 
         # 4. ensemble products: the measured law, or the assumed one where there
@@ -272,6 +286,8 @@ class Sightline:
 
         run_av = ensemble.dust_run(fit)
         law["bands"] = band_list
+        law["teff_lock"] = teff_lock
+        law["n_desi_labels"] = n_lab
         law["n_fitted"] = int(len(fit))
         law["plx_inflate"] = self.plx_inflate
         law["distances"] = ("parallax x photometric posterior (parallax error x %.2f)" % self.plx_inflate

@@ -1,4 +1,4 @@
-# Example: COSMOS (column mode, T_eff lock, template corrections, GALEX + WISE)
+# Example: COSMOS (column mode, scale-corrected DESI T_eff lock, template corrections, GALEX + WISE)
 
 Sightline RA 150.12, Dec +2.21 (l 237°, b +42°), **30′ radius**. High latitude, so
 column mode: no measurable R_V (G23 at R_V = 3.1 assumed and held in the per-star fits),
@@ -15,7 +15,29 @@ dustline run 150.12 2.21 --radius 30 --no-spectro --ref-av 0.059 --plots nospec/
 
 (~18 min for the XP fetch, 5 min for the 4,366-model grid, ~10 min of fits.)
 
-## Result (v0.8.0)
+## Result (local-mirror, 2026-10-01: scale-corrected DESI T_eff lock, the column-mode default)
+
+| sample (plx S/N > 5, D > 0.5 kpc) | N | A_V median | ± (bootstrap) |
+|---|---|---|---|
+| **F/G stars, T_eff ≥ 5500 K** (the headline column) | 138 | **0.039** | 0.007 |
+| … with a DESI prior | 85 | 0.043 | 0.008 |
+| K/M stars, T_eff < 5500 K | 221 | 0.083 | 0.011 |
+| G < 14 / 14–15.5 / 15.5–16.5 / ≥ 16.5 | 40 / 89 / 100 / 130 | 0.002 / 0.052 / 0.060 / 0.109 | 0.015 / 0.008 / 0.011 / 0.015 |
+
+References: DESI stellar-reddening map (Zhou+24) 0.045 (g−r) – 0.055 (r−z), SFD × 0.86 0.051,
+Edenhofer+23 0.081. T_eff is locked to each star's DESI label shifted onto the colour scale of
+the template corrections (`calib.desi_teff_offset`, by T_eff and DESI S/N; 1,142 DESI labels in
+the field; below S/N 7 only a 250 K prior). Over 20 high-latitude fields this column is unbiased
+against DESI and SFD (median difference 0.000–0.004, `benchmarks/column_zero_point`); the G trend
+seen here is milder across those fields (−0.015 at G < 14 to +0.014 at G ≥ 16.5) and is carried as
+a ±0.015 systematic.
+
+**Why the number moved from 0.023.** v0.5–v0.8 locked T_eff to the BP−RP colour, dereddened by the
+previous pass's A_V. A reddened star then reads as a cooler one and the iteration stalls: over the
+20 fields that lock recovers only 0.2–0.3 of the column (slope 0.21 ± 0.06 against DESI, intercept
+0), so COSMOS's "0.036 below SFD" was that, not a zero point. `--colour-lock` reproduces it.
+
+## Earlier result (v0.8.0, BP−RP colour lock — under-measures the column; kept for the record)
 
 | sample (plx S/N > 5, D > 0.5 kpc) | N | A_V median | ± (bootstrap) | MAD |
 |---|---|---|---|---|

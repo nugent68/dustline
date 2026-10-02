@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased (local-mirror)
+
+### Column mode: scale-corrected DESI T_eff lock replaces the BP−RP colour lock
+- The colour lock (v0.5–v0.8) recovered only 0.2–0.3 of the foreground column: over 20
+  high-latitude fields against the DESI stellar-reddening map (Zhou+24) the slope was 0.21 ± 0.06
+  with zero intercept (the COSMOS "deficit" below SFD).
+- `calib.desi_teff_offset` puts DESI labels on the template-correction colour scale (by T_eff and
+  S/N; `data/desi_teff_scale.json`, `tools/desi_teff_scale.py`). `desi_teff` now defaults to on in
+  column mode with DESI priors (`--colour-lock` for the old behaviour; < 30 labels falls back to
+  it with a warning; `law["teff_lock"]` records which). Same 20 fields: median difference to DESI
+  0.000–0.004, slope 0.95 ± 0.09 (g−r). COSMOS F/G column 0.023 → 0.039.
+- `desi_teff` in column mode was silently overwritten by the colour lock; fixed.
+
+### Other
+- Red-clump anchor calibrated ×0.96 (`clump.ANCHOR_CAL`) on the Bensby+17 microlensed dwarfs;
+  2MASS fallback where VVV is absent; clump search restricted to the reddening track at 5–12 kpc.
+- Law-mode fields without enough A_V ≥ 2 stars no longer crash (fallback law stays mode "law").
+- Benchmarks: `benchmarks/bensby2017` (Stage A/B, the DECaPS map in absolute A_I),
+  `benchmarks/column_zero_point`.
+
 ## v0.8.0 — 2026-09-22
 
 ### The K-dwarf T_eff offset: located, and shown not to touch R_V

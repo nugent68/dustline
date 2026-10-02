@@ -130,8 +130,11 @@ def main(argv=None) -> int:
                    help="do not use DESI MWS stellar parameters as template priors")
     r.add_argument("--min-av", type=float, default=None,
                    help="A_V threshold of the R_V law sample (default 2.0)")
-    r.add_argument("--desi-teff", action="store_true",
-                   help="also lock T_eff to the DESI label (off by default; see docs)")
+    lock = r.add_mutually_exclusive_group()
+    lock.add_argument("--desi-teff", action="store_true", default=None,
+                      help="lock T_eff to the scale-corrected DESI label (default in column mode with DESI priors)")
+    lock.add_argument("--colour-lock", dest="desi_teff", action="store_false",
+                      help="column mode: lock T_eff to the BP-RP colour instead (under-measures the column 3-5x)")
     r.add_argument("--plx-inflate", type=float, default=1.0,
                    help="multiply the Gaia parallax errors (crowded fields: DR3 errors are x1.6-4 too small "
                         "above ~300 sources/arcmin^2; a bulge run reports the in-field value from the red clump)")

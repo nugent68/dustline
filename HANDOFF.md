@@ -144,9 +144,11 @@ budget (±0.05 closure, ±0.05 NIR zero points), not the answers.
    residual); bulge/thick-disk fields extrapolate.
 3. Free giant fits sit 25–90 K below ASPCAP in reddened fields (no luminosity lever;
    was 50–120 K before the label-locked corrections).
-4. Column-mode absolute zero point ±0.03 (XP ~0.03 mag too red in g−z for faint red stars);
-   COSMOS now reads 0.036 *below* SFD and the injection control rules out a template
-   zero point, so the remaining suspects are the maps and the calibrator population.
+4. ~~Column-mode absolute zero point~~ RESOLVED 2026-10-01: it was the BP−RP colour T_eff
+   lock, which recovers only 0.2–0.3 of the column (20 fields vs the DESI reddening map). Column
+   mode now locks to the scale-corrected DESI label (`calib.desi_teff_offset`): unbiased vs DESI
+   and SFD, ±0.015 G-dependent systematic. Open: a converging lock for fields without DESI labels
+   (they fall back to the colour lock with a warning).
 5. **PS1 band corrections are essentially uncalibrated**: the nearby bright calibrators hit
    the PS1 saturation cut, so `dm_PS1_i` rests on 73 dwarfs, `dm_PS1_z` on 71 and
    `dm_PS1_g` on 603, against 2,386 for 2MASS — `dm_PS1_*` is 0 at most nodes. Fields
