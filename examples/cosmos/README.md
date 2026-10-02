@@ -15,14 +15,17 @@ dustline run 150.12 2.21 --radius 30 --no-spectro --ref-av 0.059 --plots nospec/
 
 (~18 min for the XP fetch, 5 min for the 4,366-model grid, ~10 min of fits.)
 
-## Result (local-mirror, 2026-10-01: scale-corrected DESI T_eff lock, the column-mode default)
+## Result (local-mirror, 2026-10-02: scale-corrected DESI T_eff lock + alpha-corrected [M/H] prior, the defaults)
 
 | sample (plx S/N > 5, D > 0.5 kpc) | N | A_V median | ± (bootstrap) |
 |---|---|---|---|
-| **F/G stars, T_eff ≥ 5500 K** (the headline column) | 138 | **0.039** | 0.007 |
-| … with a DESI prior | 85 | 0.043 | 0.008 |
-| K/M stars, T_eff < 5500 K | 221 | 0.083 | 0.011 |
-| G < 14 / 14–15.5 / 15.5–16.5 / ≥ 16.5 | 40 / 89 / 100 / 130 | 0.002 / 0.052 / 0.060 / 0.109 | 0.015 / 0.008 / 0.011 / 0.015 |
+| **F/G stars, T_eff ≥ 5500 K** (the headline column) | 141 | **0.037** | 0.007 |
+| … with a DESI prior | 87 | 0.040 | 0.008 |
+| K/M stars, T_eff < 5500 K | 218 | 0.072 | 0.008 |
+| G < 14 / 14–15.5 / 15.5–16.5 / ≥ 16.5 | 40 / 89 / 100 / 130 | 0.001 / 0.047 / 0.056 / 0.075 | 0.012 / 0.009 / 0.010 / 0.013 |
+
+(2026-10-01, before the alpha-corrected [M/H] prior: 0.039 ± 0.007; DESI [Fe/H] now enters as
+[Fe/H] + log10(0.638 × 10^[α/Fe] + 0.362), `benchmarks/desi_labels`.)
 
 References: DESI stellar-reddening map (Zhou+24) 0.045 (g−r) – 0.055 (r−z), SFD × 0.86 0.051,
 Edenhofer+23 0.081. T_eff is locked to each star's DESI label shifted onto the colour scale of
