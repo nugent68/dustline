@@ -155,7 +155,7 @@ giants ≥ 4500 K) close to 0.05 in R_V; cool ones needed the correction. The v0
 (A_V = 0 as well as 1, T_eff locked as well as free) traced the residual K-dwarf T_eff
 offset to the 0.5 dex [M/H] grid step and showed it biases **A_V only** — locking T_eff
 removes the A_V bias and leaves R_V unchanged — so the coupling is not a bias term in the
-R_V budget. See [docs/method.md](docs/method.md).
+R_V budget. See [docs/method.md](docs/method.md); how each catalogue (Gaia, XP, PS1/DECaPS, 2MASS/VVV, WISE, GALEX, DESI, APOGEE) feeds the fits and the template calibration: [docs/data_flow.md](docs/data_flow.md).
 
 ## Caveats
 
