@@ -188,6 +188,9 @@ class Sightline:
         # non-default options only, so the cache keys of plain law-mode runs are unchanged
         if self.plan.spectro != "none":
             config["spectro"] = self.plan.spectro
+            from .catalogs import desi as _desi
+            if _desi.ALPHA_TO_MH:
+                config["desi_mh"] = "alpha"         # [M/H] prior = alpha-corrected DESI [Fe/H]
         if self.plan.mode != "law":
             config["mode"] = self.plan.mode
             config["teff_lock"] = "desi_scaled" if self.desi_teff else "colour"   # v0.5: BP-RP locus lock

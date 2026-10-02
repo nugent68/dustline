@@ -53,11 +53,31 @@ def shape(d: pd.DataFrame) -> pd.DataFrame:
     return res[ok].reset_index(drop=True)
 
 
+ALPHA_TO_MH = True   # use [Fe/H] + log10(0.638 x 10^[a/Fe] + 0.362) (Salaris+93) as the [M/H] prior
+
+
+def to_mh(res: pd.DataFrame) -> pd.DataFrame:
+    """Turn the DESI [Fe/H] prior into total metallicity [M/H], the scaled-solar quantity of the
+    NewEra grid: [M/H] = [Fe/H] + log10(0.638 x 10^[alpha/Fe] + 0.362) (Salaris et al. 1993).
+    Against dustline's own NewEra fits with the DESI priors removed (benchmarks/desi_labels;
+    20 fields, ~5,800 stars) DESI [Fe/H] reads 0.12-0.16 dex low and the alpha-corrected value
+    agrees to +/- 0.02. The raw label is kept as feh_desi; applied when the priors are read, so
+    cached desi_gaia.csv files (raw [Fe/H] + alphafe_spec) need no refetch."""
+    if not ALPHA_TO_MH or "feh_spec" not in res or "feh_desi" in res or not len(res):
+        return res
+    res = res.copy()
+    res["feh_desi"] = res["feh_spec"]
+    a = res["alphafe_spec"].astype(float) if "alphafe_spec" in res else pd.Series(np.nan, index=res.index)
+    corr = np.log10(0.638 * 10.0 ** a.clip(-0.2, 0.5) + 0.362)   # DESI [a/Fe] is noisy at low S/N
+    res["feh_spec"] = res["feh_spec"] + np.where(np.isfinite(corr), corr, 0.0)
+    return res
+
+
 def fetch(ws: Workspace, gaia: pd.DataFrame, force: bool = False) -> pd.DataFrame:
     """DESI MWS priors for the Gaia sources of the field (cached desi_gaia.csv)."""
     out = ws.path("desi_gaia.csv")
     if out.exists() and not force:
-        return pd.read_csv(out)
+        return to_mh(pd.read_csv(out))
     try:
         d = box_query("desi_dr1.mws", _COLS, ws.ra, ws.dec, ws.radius_arcmin / 60.0,
                       ra_col="target_ra", dec_col="target_dec", where=_WHERE)
@@ -72,4 +92,4 @@ def fetch(ws: Workspace, gaia: pd.DataFrame, force: bool = False) -> pd.DataFram
         res = res[res.source_id.isin(gaia.source_id.values)].reset_index(drop=True)
     res.round(4).to_csv(out, index=False)
     print(f"DESI MWS: {len(res)} Gaia stars with spectroscopic parameters")
-    return res
+    return to_mh(res)

@@ -29,7 +29,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import pandas as pd
 
 OUT, FIELDS = ".", "fields.csv"
-RADIUS, PLX_INFLATE, DESI_TEFF = 30.0, 1.0, False
+RADIUS, PLX_INFLATE, DESI_TEFF = 30.0, 1.0, None    # None: the package default
 
 
 def events(only=None):
@@ -173,7 +173,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fields", required=True); ap.add_argument("--out", required=True)
     ap.add_argument("--radius", type=float, default=30.0); ap.add_argument("--plx-inflate", type=float, default=1.0)
-    ap.add_argument("--desi-teff", action="store_true", help="lock T_eff to the DESI label (column mode: instead of BP-RP)")
+    lk = ap.add_mutually_exclusive_group()
+    lk.add_argument("--desi-teff", action="store_true", default=None, help="force the scale-corrected DESI T_eff lock")
+    lk.add_argument("--colour-lock", dest="desi_teff", action="store_false", help="force the BP-RP colour lock")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for n in ("data", "grids", "fit"):
         p = sub.add_parser(n)
