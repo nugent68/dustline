@@ -56,3 +56,22 @@ plus COSMOS, 30' each, run at NERSC in column mode. Straight-line fits dustline 
   calibration already found DESI 50-85 K hot for K dwarfs.
 - Fix in the package (e3aa6e8): `desi_teff` now replaces the colour lock in column mode (it was
   overwritten by it). Not yet the default; the +0.03 offset needs a DESI T_eff-scale correction.
+
+## DESI T_eff on the colour scale (2026-10-01; `tools/desi_teff_scale.py`, `calib.desi_teff_offset`, cd899f0)
+
+The template corrections place every calibrator at the colour T_eff of its dereddened BP-RP, so a
+fit locked to the raw DESI label borrows the template of a hotter star. dT = T_DESI - T_colour,
+measured on ~70k DESI DR1 dwarfs/subgiants at |b| > 40 within 1 kpc (Edenhofer-dereddened):
++65..+150 K for 4250-5750 K and +5..+30 K for 5750-6250 K at S/N > 60, larger at S/N 7-35,
+erratic below S/N 7 (`desi_teff_scale/`). With `desi_teff` the label is now shifted by it (below
+S/N 7 only a 250 K prior). Same 20 fields (`column_fields_desi_scaled/`):
+
+| | vs DESI E(g-r) | vs DESI E(r-z) | vs SFD x 0.86 |
+|---|---|---|---|
+| fit a, b | -0.001 +/- 0.010, 0.95 +/- 0.09 | -0.019 +/- 0.009, 1.10 +/- 0.07 | -0.020 +/- 0.011, 1.28 +/- 0.11 |
+| median difference (ratio) | +0.004 (1.03) | +0.000 (1.00) | +0.003 (1.03) |
+
+Field-to-field scatter about DESI 0.015-0.022 in A_V, comparable to DESI's own g-r vs r-z
+disagreement. COSMOS: 0.039 +/- 0.008 (DESI 0.045-0.055, SFD x 0.86 0.051). The scale-corrected
+DESI lock is the column mode to use where DESI labels exist; the colour lock (still the default)
+recovers only 0.2-0.3 of the column.
