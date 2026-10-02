@@ -75,3 +75,11 @@ Field-to-field scatter about DESI 0.015-0.022 in A_V, comparable to DESI's own g
 disagreement. COSMOS: 0.039 +/- 0.008 (DESI 0.045-0.055, SFD x 0.86 0.051). The scale-corrected
 DESI lock is the column mode to use where DESI labels exist; the colour lock (still the default)
 recovers only 0.2-0.3 of the column.
+
+## Alpha-corrected DESI [M/H] prior (2026-10-02; 220d0fe, `column_fields_alpha/`)
+
+`catalogs.desi.to_mh` now feeds [M/H] = [Fe/H] + log10(0.638 x 10^[a/Fe] + 0.362) as the prior
+(benchmarks/desi_labels: raw DESI [Fe/H] reads 0.12-0.16 dex low against the NewEra fits). Same 20
+fields, scale-corrected DESI T_eff lock: per-field column change median -0.0007 (range -0.016 ..
++0.002); still unbiased - median difference +0.0016 (DESI g-r), -0.0026 (r-z), -0.0013 (SFD x 0.86),
+slope 0.92 +/- 0.09 vs DESI g-r. With T_eff locked the [M/H] prior has little leverage on A_V.
