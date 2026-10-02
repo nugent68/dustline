@@ -36,3 +36,23 @@ COSMOS F/G stars with DESI [Fe/H] (N 90, median -0.55): no monotonic A_V trend w
 The ~0.025 deficit is unexplained. Next: column-mode runs at ~20 high-latitude fields spanning
 DESI E(B-V) 0.01-0.1 (cheap at NERSC: few XP stars each) - slope vs intercept of dustline vs DESI
 separates a zero-point offset from a scale error.
+
+## 20 high-latitude fields (2026-10-01; `tools/column_fields.py`, `tools/field_batch.py`, NERSC)
+
+19 fields (|b| > 30, Dec > -25, DESI DR1 MWS coverage, one per log bin of DESI E(B-V) 0.011-0.089)
+plus COSMOS, 30' each, run at NERSC in column mode. Straight-line fits dustline = a + b x reference:
+
+| T_eff lock | vs DESI E(g-r) | vs DESI E(r-z) | vs SFD x 0.86 |
+|---|---|---|---|
+| BP-RP colour (v0.5+ default), `column_fields/` | a +0.003, b 0.21 +/- 0.06 | a -0.001, b 0.25 +/- 0.07 | a -0.002, b 0.31 +/- 0.09 |
+| DESI label (`--desi-teff`), `column_fields_desi/` | a +0.045 +/- 0.009, b 0.87 +/- 0.09 | a +0.028 +/- 0.007, b 1.01 +/- 0.07 | a +0.027 +/- 0.007, b 1.15 +/- 0.07 |
+
+- The colour lock recovers only 20-30 % of the column: a reddened star is read as a cooler one, and
+  the iteration (T_eff from BP-RP dereddened by the previous pass's A_V, snapped to the 100 K grid
+  node by the 1 K prior) stalls - on F24038 it sits at A_V 0.063-0.071 over 11 passes while the
+  DESI-label lock gives 0.236 (DESI 0.275, SFD x 0.86 0.171). The COSMOS "deficit" was this.
+- The DESI-label lock has the right scale (slope ~1) and a +0.03 offset, consistent with the DESI
+  T_eff scale running ~30-50 K hot for these F/G stars (~0.09 A_V per 100 K); the package's
+  calibration already found DESI 50-85 K hot for K dwarfs.
+- Fix in the package (e3aa6e8): `desi_teff` now replaces the colour lock in column mode (it was
+  overwritten by it). Not yet the default; the +0.03 offset needs a DESI T_eff-scale correction.
