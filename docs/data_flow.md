@@ -106,14 +106,14 @@ dereddens the template calibrators.
 
 ## DESI: what is used, and what is calibrated
 
-### 1. log g and [Fe/H]: priors, taken as published
+### 1. log g and [Fe/H]: priors (log g as published, [Fe/H] turned into [M/H])
 
 `catalogs.desi.shape` turns each DESI DR1 MWS match (RVSpecFit, `rvs_warn = 0`) into a prior:
 
 | label | prior width | recalibrated by dustline? |
 |---|---|---|
-| log g | DESI error (+) 0.10 dex | no |
-| [Fe/H] | DESI error (+) 0.10 dex | no (DESI's own DR1 calibration, if any is in the columns read) |
+| log g | DESI error (+) 0.10 dex | no - validated: fit - DESI +/- 0.01, scatter 0.25 dex (`benchmarks/desi_labels`) |
+| [Fe/H] -> [M/H] | DESI error (+) 0.10 dex | yes: [M/H] = [Fe/H] + log10(0.638 x 10^[a/Fe] + 0.362) (Salaris+93; [a/Fe] clipped -0.2..+0.5; `catalogs.desi.to_mh`) - raw DESI [Fe/H] reads 0.12-0.16 dex low against the NewEra fits, the alpha-corrected value agrees to +/- 0.02 |
 
 A star with an [Fe/H] prior is fitted on the full [M/H] axis (-2..+0.5); a star without one
 is held to -0.5..+0.5 (free [M/H] absorbs residuals).
@@ -154,8 +154,11 @@ synthetic spectra (RVSpecFit) that are not NewEra, so the offset is measured, no
 
 ## Known limits
 
-- DESI log g and [Fe/H] priors are used as published (0.10 dex floors); not validated against
-  the NewEra fits beyond the template calibration.
+- DESI log g / [M/H] were validated on ~5,800 stars in 20 high-latitude fields
+  (`benchmarks/desi_labels`); residual [M/H] structure: hot stars (> 5750 K) +0.14..+0.22 dex,
+  metal-poor compression (slope 0.72-0.87). Its effect on the column is small (the alpha
+  correction moved the 20 columns by a median -0.0007). The template calibrators were labelled
+  with raw DESI [Fe/H] (nearly solar, little alpha), not yet rebuilt.
 - The column-mode correction is least certain at DESI S/N 7-35: over 20 fields A_V runs from
   -0.015 (G < 14) to +0.014 (G >= 16.5) relative to DESI (a +/- 0.015 systematic).
 - The template corrections inherit the colour T_eff scale and the Edenhofer dereddening of the
