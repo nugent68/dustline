@@ -608,6 +608,14 @@ def run_fit_with_offsets(ws: Workspace, stars: pd.DataFrame, xp, bands: list[str
         # the DESI T_eff label is not a 100 K anchor (S/N-dependent by +/-200 K against
         # the colour scale): log g / [Fe/H] priors only; T_eff from the data + radius prior
         stars["teff_spec"] = np.nan
+    elif desi_teff and not teff_from_colour:
+        # the DESI label put on the colour scale of the template corrections (calib.desi_teff_offset,
+        # by T_eff and S/N); below calib.DESI_LOWSNR it is only a loose prior
+        snr = stars["spec_snr"].values.astype(float) if "spec_snr" in stars else np.full(len(stars), 50.0)
+        t = stars["teff_spec"].values.astype(float)
+        stars["teff_spec"] = t - calib.desi_teff_offset(t, snr)
+        low = np.isfinite(t) & ~(snr >= calib.DESI_LOWSNR)
+        stars["teff_spec_err"] = np.where(low, calib.DESI_LOWSNR_SIGMA, stars["teff_spec_err"].values)
     n_pass = 1 if freeze_offsets else max_passes + (1 if has_uv else 0)
     for p in range(max(n_pass, 2 if teff_from_colour else 1)):
         if teff_from_colour:

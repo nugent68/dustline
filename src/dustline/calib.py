@@ -125,6 +125,47 @@ def map_extinction(ra, dec, dist_pc, rv: float = 3.1) -> np.ndarray:
     return 2.8 * np.nan_to_num(e, nan=0.0)
 
 
+DESI_LOWSNR = 7.0          # DESI spectrum S/N below which the T_eff label is only a loose prior
+DESI_LOWSNR_SIGMA = 250.0  # K
+_desi_scale = {}
+
+
+def desi_teff_offset(teff, snr) -> np.ndarray:
+    """dT = T_DESI - T_colour (K) for DESI DR1 MWS (RVSpecFit) labels, so that T_DESI - dT is on the
+    colour scale the template corrections are built on (teff_from_bprp of the dereddened BP-RP).
+    Measured on ~70k DESI dwarfs/subgiants at |b| > 40 within 1 kpc (tools/desi_teff_scale.py,
+    data/desi_teff_scale.json) per (T_DESI, S/N) cell; bilinear in T and log S/N between cell
+    centres, empty cells filled from the nearest S/N cell of the same T row, edges clipped.
+    At high S/N it is +65..+150 K for 4250-5750 K and +5..+30 K for 5750-6250 K."""
+    import json
+    from importlib import resources
+    if "grid" not in _desi_scale:
+        d = json.loads((resources.files("dustline") / "data" / "desi_teff_scale.json").read_text())
+        te, se = np.array(d["teff_edges"]), np.array(d["snr_edges"])
+        g = np.array(d["dT"], float)
+        for i in range(g.shape[0]):                      # fill empty cells along S/N
+            ok = np.isfinite(g[i])
+            if ok.any():
+                j = np.arange(g.shape[1])
+                g[i] = np.interp(j, j[ok], g[i][ok])
+        rows = np.isfinite(g).all(axis=1)                # rows still empty: nearest filled row
+        for i in np.where(~rows)[0]:
+            k = np.where(rows)[0][np.argmin(np.abs(np.where(rows)[0] - i))]
+            g[i] = g[k]
+        tc = 0.5 * (te[1:] + te[:-1])
+        sc = np.log10(np.sqrt(se[:-1] * np.minimum(se[1:], 300.0)))
+        _desi_scale["grid"] = (tc, sc, g)
+    tc, sc, g = _desi_scale["grid"]
+    t = np.clip(np.asarray(teff, float), tc[0], tc[-1])
+    s = np.clip(np.log10(np.clip(np.asarray(snr, float), 1.0, None)), sc[0], sc[-1])
+    it = np.clip(np.searchsorted(tc, t) - 1, 0, len(tc) - 2)
+    js = np.clip(np.searchsorted(sc, s) - 1, 0, len(sc) - 2)
+    ft = (t - tc[it]) / (tc[it + 1] - tc[it]); fs = (s - sc[js]) / (sc[js + 1] - sc[js])
+    out = ((g[it, js] * (1 - ft) + g[it + 1, js] * ft) * (1 - fs)
+           + (g[it, js + 1] * (1 - ft) + g[it + 1, js + 1] * ft) * fs)
+    return np.where(np.isfinite(np.asarray(teff, float)), out, np.nan)
+
+
 def deredden(xp: dict, stars: pd.DataFrame, bands: list[str], av: np.ndarray,
              rv: float = 3.1) -> tuple[dict, pd.DataFrame]:
     """Remove a known A_V from each star's XP spectrum (G23 at rv) and photometry

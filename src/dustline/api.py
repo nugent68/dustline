@@ -184,7 +184,7 @@ class Sightline:
             config["spectro"] = self.plan.spectro
         if self.plan.mode != "law":
             config["mode"] = self.plan.mode
-            config["teff_lock"] = "desi" if self.desi_teff else "colour"   # v0.5: BP-RP locus lock
+            config["teff_lock"] = "desi_scaled" if self.desi_teff else "colour"   # v0.5: BP-RP locus lock
         if self.freeze_offsets:
             config["freeze_offsets"] = True
         if self.desi_teff:
