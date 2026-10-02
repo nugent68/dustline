@@ -146,7 +146,11 @@ class Sightline:
     min_av : float | None    A_V above which a star enters the R_V law average
                              (default 2.0; 0.5 is workable with spectroscopic priors)
     desi_teff : bool         also use the DESI T_eff label as a locked prior (off: the
-                             label is S/N-dependent by +/-200 K against the colour scale)
+                             label is S/N-dependent by +/-200 K against the colour scale).
+                             In column mode it REPLACES the BP-RP colour lock, which
+                             under-measures the column: over 20 high-latitude fields the
+                             colour-lock column is 0.2-0.3 x the DESI stellar-reddening map
+                             (benchmarks/column_zero_point)
     """
 
     def __init__(self, ra: float, dec: float, radius_arcmin: float = DEFAULT_RADIUS_ARCMIN,
@@ -180,7 +184,7 @@ class Sightline:
             config["spectro"] = self.plan.spectro
         if self.plan.mode != "law":
             config["mode"] = self.plan.mode
-            config["teff_lock"] = "colour"      # v0.5: T_eff locked to the BP-RP locus
+            config["teff_lock"] = "desi" if self.desi_teff else "colour"   # v0.5: BP-RP locus lock
         if self.freeze_offsets:
             config["freeze_offsets"] = True
         if self.desi_teff:
@@ -251,7 +255,7 @@ class Sightline:
             spectro_priors=(self.plan.spectro != "none") or self.plan.mode == "column",
             freeze_offsets=self.freeze_offsets,
             rv_fixed=ensemble.RV_ASSUMED if self.plan.mode == "column" else None,
-            teff_from_colour=(self.plan.mode == "column"), desi_teff=self.desi_teff,
+            teff_from_colour=(self.plan.mode == "column" and not self.desi_teff), desi_teff=self.desi_teff,
             plx_inflate=self.plx_inflate)
 
         # 4. ensemble products: the measured law, or the assumed one where there

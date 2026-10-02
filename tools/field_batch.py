@@ -29,7 +29,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import pandas as pd
 
 OUT, FIELDS = ".", "fields.csv"
-RADIUS, PLX_INFLATE = 30.0, 1.0
+RADIUS, PLX_INFLATE, DESI_TEFF = 30.0, 1.0, False
 
 
 def events(only=None):
@@ -41,7 +41,7 @@ def sightline(ra, dec, shallow=False):
     """shallow: let the plan pick PS1 over DECaPS (fields at the DECaPS edge where DECaPS returns
     nothing, e.g. OGLE-2014-BLG-1418 at l 5.4, b -4.35: 2MASS-only otherwise)."""
     from dustline.api import Sightline
-    return Sightline(ra, dec, RADIUS, plx_inflate=PLX_INFLATE, prefer_deep=not shallow)
+    return Sightline(ra, dec, RADIUS, plx_inflate=PLX_INFLATE, prefer_deep=not shallow, desi_teff=DESI_TEFF)
 
 
 def _data(ev):
@@ -169,10 +169,11 @@ def cmd_fit(a):
 
 
 def main():
-    global OUT, FIELDS, RADIUS, PLX_INFLATE
+    global OUT, FIELDS, RADIUS, PLX_INFLATE, DESI_TEFF
     ap = argparse.ArgumentParser()
     ap.add_argument("--fields", required=True); ap.add_argument("--out", required=True)
     ap.add_argument("--radius", type=float, default=30.0); ap.add_argument("--plx-inflate", type=float, default=1.0)
+    ap.add_argument("--desi-teff", action="store_true", help="lock T_eff to the DESI label (column mode: instead of BP-RP)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for n in ("data", "grids", "fit"):
         p = sub.add_parser(n)
@@ -184,7 +185,7 @@ def main():
             p.add_argument("--threads", type=int, default=2)
             p.add_argument("--max-hours", type=float, default=99.0, help="start no new field after this")
     a = ap.parse_args()
-    OUT, FIELDS, RADIUS, PLX_INFLATE = a.out, a.fields, a.radius, a.plx_inflate
+    OUT, FIELDS, RADIUS, PLX_INFLATE, DESI_TEFF = a.out, a.fields, a.radius, a.plx_inflate, a.desi_teff
     os.makedirs(OUT, exist_ok=True)
     {"data": cmd_data, "grids": cmd_grids, "fit": cmd_fit}[a.cmd](a)
 
